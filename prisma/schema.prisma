@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EntitlementSource {
+  stripe
+}
+
+enum MagicLinkPurpose {
+  activate
+  signin
+}
+
+model User {
+  id                 String     @id @default(cuid())
+  email              String     @unique
+  marketingConsent   Boolean    @default(false)
+  marketingConsentAt DateTime?
+  createdAt          DateTime   @default(now())
+  devices            Device[]
+  entitlements       Entitlement[]
+  magicLinks         MagicLinkToken[]
+}
+
+model Entitlement {
+  id                    String            @id @default(cuid())
+  userId                String
+  packSlug              String
+  source                EntitlementSource @default(stripe)
+  stripeSessionId       String            @unique
+  stripePaymentIntentId String?
+  grantedAt             DateTime          @default(now())
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, packSlug])
+  @@index([packSlug])
+}
+
+model Device {
+  id               String   @id @default(cuid())
+  userId           String
+  deviceId         String
+  label            String?
+  sessionTokenHash String   @unique
+  createdAt        DateTime @default(now())
+  lastSeenAt       DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceId])
+  @@index([userId, lastSeenAt])
+}
+
+model MagicLinkToken {
+  id        String           @id @default(cuid())
+  userId    String?
+  email     String
+  tokenHash String           @unique
+  purpose   MagicLinkPurpose
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime         @default(now())
+  user      User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([expiresAt])
+}
