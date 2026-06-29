@@ -34,6 +34,41 @@ type PositionFix = {
   timestamp: number;
 };
 
+type WelcomeLoop = NonNullable<RoutePack["loops"]>[number] & {
+  coverage: string;
+  startNeighborhood: string;
+  startStop: Stop | null;
+  distanceMeters: number | null;
+  isClosest: boolean;
+  isMarathon: boolean;
+};
+
+const loopWelcomeMeta: Record<string, { coverage: string; startNeighborhood: string }> = {
+  "campus-after-dark": {
+    coverage: "University and riverbank",
+    startNeighborhood: "near the U of S campus"
+  },
+  "west-side-dead-drive": {
+    coverage: "West and southwest to the river valley",
+    startNeighborhood: "in Westmount"
+  },
+  "edge-of-town": {
+    coverage: "North and east edges past city limits",
+    startNeighborhood: "in Lawson Heights"
+  },
+  "nutana-broadway": {
+    coverage: "Nutana, Broadway, and old south-central",
+    startNeighborhood: "in Nutana"
+  },
+  "complete-the-city": {
+    coverage: "All of Saskatoon",
+    startNeighborhood: "north-central"
+  }
+};
+
+const saskatoonCenter = { lat: 52.1318, lng: -106.6608 };
+const saskatoonDistanceCutoffMeters = 100000;
+
 function haversineMeters(a: PositionFix, stop: Pick<Stop, "lat" | "lng">) {
   const radius = 6371000;
   const dLat = ((stop.lat - a.lat) * Math.PI) / 180;
@@ -94,6 +129,15 @@ function localTime(timestamp: string) {
 
 function loopHref(loopId: string) {
   return `/?loop=${encodeURIComponent(loopId)}`;
+}
+
+function formatApproxDistance(meters: number) {
+  if (meters < 1000) {
+    return `${Math.max(100, Math.round(meters / 100) * 100)}m`;
+  }
+
+  const kilometers = meters / 1000;
+  return `${kilometers < 10 ? kilometers.toFixed(1) : Math.round(kilometers).toString()} km`;
 }
 
 function loopIdFromLocation(route: RoutePack) {
@@ -220,6 +264,8 @@ export function RoutePlayer() {
   const [selectedLoopId, setSelectedLoopId] = useState<string | null>(null);
   const [isLoopPickerOpen, setIsLoopPickerOpen] = useState(false);
   const [hasSeenWelcome, setHasSeenWelcome] = useState(false);
+  const [welcomePosition, setWelcomePosition] = useState<PositionFix | null>(null);
+  const [welcomeLocationStatus, setWelcomeLocationStatus] = useState<"idle" | "requesting" | "enabled" | "denied" | "far">("idle");
   const [shareStatus, setShareStatus] = useState("");
   const audioEngine = useRef<DarkDrivesAudioEngine | null>(null);
   const screenRef = useRef<HTMLElement | null>(null);
@@ -278,12 +324,46 @@ export function RoutePlayer() {
     () => route?.loops?.filter((loop) => loop.id !== "complete-the-city") ?? [],
     [route]
   );
-  const welcomeLoops = useMemo(() => {
+  const welcomeLoops = useMemo<WelcomeLoop[]>(() => {
     const loops = route?.loops ?? [];
-    const campus = loops.find((loop) => loop.id === "campus-after-dark");
-    const others = loops.filter((loop) => loop.id !== "campus-after-dark");
-    return campus ? [campus, ...others] : loops;
-  }, [route]);
+    const withDetails = loops.map((loop) => {
+      const startStop = loop.stopIds.map((id) => stopById.get(id)).find((stop): stop is Stop => Boolean(stop)) ?? null;
+      const meta = loopWelcomeMeta[loop.id] ?? {
+        coverage: "Saskatoon",
+        startNeighborhood: startStop ? `near ${startStop.title}` : "at the first live stop"
+      };
+
+      return {
+        ...loop,
+        coverage: meta.coverage,
+        startNeighborhood: meta.startNeighborhood,
+        startStop,
+        distanceMeters: welcomePosition && startStop ? haversineMeters(welcomePosition, startStop) : null,
+        isClosest: false,
+        isMarathon: loop.id === "complete-the-city"
+      };
+    });
+
+    const realLoops = withDetails.filter((loop) => !loop.isMarathon);
+    const marathon = withDetails.find((loop) => loop.isMarathon);
+    let ordered = realLoops;
+
+    if (welcomeLocationStatus === "enabled" && welcomePosition) {
+      ordered = [...realLoops].sort((a, b) => {
+        const distanceA = a.distanceMeters ?? Number.POSITIVE_INFINITY;
+        const distanceB = b.distanceMeters ?? Number.POSITIVE_INFINITY;
+        return distanceA - distanceB;
+      });
+    } else {
+      const campus = realLoops.find((loop) => loop.id === "campus-after-dark");
+      const others = realLoops.filter((loop) => loop.id !== "campus-after-dark");
+      ordered = campus ? [campus, ...others] : realLoops;
+    }
+
+    const closestId = welcomeLocationStatus === "enabled" ? ordered[0]?.id : null;
+    const pinned = marathon ? [...ordered, marathon] : ordered;
+    return pinned.map((loop) => ({ ...loop, isClosest: loop.id === closestId }));
+  }, [route?.loops, stopById, welcomeLocationStatus, welcomePosition]);
   const completedLoopIdSet = useMemo(() => new Set(completedLoopIds), [completedLoopIds]);
   const nextUnfinishedLoop = authoredLoops.find((loop) => !completedLoopIdSet.has(loop.id));
   const loopsLeftTonight = authoredLoops.filter((loop) => !completedLoopIdSet.has(loop.id)).length;
@@ -736,9 +816,47 @@ export function RoutePlayer() {
     }
   }
 
+  function requestWelcomeLocation() {
+    if (!("geolocation" in navigator)) {
+      setWelcomePosition(null);
+      setWelcomeLocationStatus("denied");
+      return;
+    }
+
+    setWelcomeLocationStatus("requesting");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const current = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          speedMps: position.coords.speed,
+          timestamp: position.timestamp
+        };
+        lastPositionFix.current = current;
+        setCurrentPosition(current);
+        setWelcomePosition(current);
+        setLocationMode("watching");
+        const distanceFromSaskatoon = haversineMeters(current, saskatoonCenter);
+        setWelcomeLocationStatus(distanceFromSaskatoon > saskatoonDistanceCutoffMeters ? "far" : "enabled");
+      },
+      () => {
+        setWelcomePosition(null);
+        setWelcomeLocationStatus("denied");
+      },
+      { enableHighAccuracy: true, maximumAge: 60000, timeout: 10000 }
+    );
+  }
+
   function selectLoop(loopId: string, options: { updateUrl?: boolean } = {}) {
     if (loopId === selectedLoop?.id) {
       return;
+    }
+
+    if (loopId === "complete-the-city") {
+      const confirmed = window.confirm("This is the full ~6 hour marathon across all 39 stops. Start it?");
+      if (!confirmed) {
+        return;
+      }
     }
 
     if (options.updateUrl !== false) {
@@ -1066,10 +1184,25 @@ export function RoutePlayer() {
                   <h2>Pick the loop for tonight.</h2>
                 </div>
               )}
+              <div className="closest-loop-row">
+                <button
+                  className="location-link"
+                  disabled={welcomeLocationStatus === "requesting"}
+                  onClick={requestWelcomeLocation}
+                  type="button"
+                >
+                  {welcomeLocationStatus === "requesting" ? "Checking your closest loop..." : "Show me the closest loop"}
+                </button>
+                {welcomeLocationStatus === "enabled" && <span>Approximate distance to each first stop.</span>}
+                {welcomeLocationStatus === "denied" && <span>Location skipped. The start areas below still work.</span>}
+                {welcomeLocationStatus === "far" && <span>You do not look near Saskatoon. Showing start areas instead.</span>}
+              </div>
               <div className="welcome-loop-list">
                 {welcomeLoops.map((loop) => (
                   <a
                     className="welcome-loop-card"
+                    data-closest={loop.isClosest}
+                    data-marathon={loop.isMarathon}
                     href={loopHref(loop.id)}
                     key={loop.id}
                     onClick={(event) => {
@@ -1077,9 +1210,19 @@ export function RoutePlayer() {
                       selectLoop(loop.id);
                     }}
                   >
-                    <strong>{loop.title}</strong>
+                    <div className="welcome-loop-title">
+                      <strong>{loop.title}</strong>
+                      {loop.isClosest && <span>Closest</span>}
+                      {loop.isMarathon && <span>Marathon</span>}
+                    </div>
                     <span>{loop.subtitle}</span>
+                    <span>Starts {loop.startNeighborhood}: {loop.startStop?.title ?? "first live stop"}</span>
+                    <span>Covers {loop.coverage}</span>
                     <em>{loop.estimatedDuration} / finale: {loopFinaleTitle(loop)}</em>
+                    {loop.distanceMeters !== null && welcomeLocationStatus === "enabled" && (
+                      <em>First stop about {formatApproxDistance(loop.distanceMeters)} away, straight line</em>
+                    )}
+                    {loop.isMarathon && <em>Marathon, all 39 stops, a serious commitment</em>}
                   </a>
                 ))}
               </div>
