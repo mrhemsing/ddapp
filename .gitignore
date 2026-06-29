@@ -12,3 +12,4 @@ pnpm-debug.log*
 ddapp-smoke.png
 ddapp-offline-smoke.png
 ddapp-design-*.png
+private/

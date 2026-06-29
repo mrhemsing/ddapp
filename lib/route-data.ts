@@ -42,6 +42,18 @@ export type Stop = {
   rituals?: Ritual[];
 };
 
+export type SealedStop = {
+  id: string;
+  title: string;
+  order: number;
+  reason: string;
+  story: {
+    teaser: string;
+    body: string;
+  };
+  safetyNote?: string;
+};
+
 export type RoutePack = {
   id: string;
   title: string;
@@ -51,6 +63,7 @@ export type RoutePack = {
   outroAudio: string;
   outroScript?: string;
   stops: Stop[];
+  sealedStops?: SealedStop[];
 };
 
 export const fakeRoute: RoutePack = {

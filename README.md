@@ -32,6 +32,14 @@ Production route content is loaded through `app/api/route/pack` after entitlemen
 
 The public client should fetch the route pack from the API instead of importing coordinate/script data directly.
 
+To build the private payload, place the uncommitted coordinate config at `private/dark-drives-stop-config.json`, then run:
+
+```bash
+npm run build:route-pack
+```
+
+The script writes `private/dark-drives-route-pack.json`, `private/dark-drives-route-pack.b64`, and `private/dark-drives-route-pack-assets.json`. The `private/` directory is gitignored.
+
 ## Run
 
 ```bash

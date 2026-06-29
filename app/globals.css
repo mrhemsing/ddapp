@@ -422,6 +422,21 @@ button {
   line-height: 1.45;
 }
 
+.sealed-entry {
+  display: grid;
+  gap: 4px;
+  padding-top: 14px;
+}
+
+.sealed-entry + .sealed-entry {
+  border-top: 1px solid var(--ash-line);
+  margin-top: 14px;
+}
+
+.sealed-entry h2 {
+  font-size: 18px;
+}
+
 .field {
   display: grid;
   gap: 7px;

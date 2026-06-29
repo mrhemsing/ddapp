@@ -230,7 +230,8 @@ export function RoutePlayer() {
         lastLocationUpdate.current = now;
         lastPositionFix.current = current;
         setCurrentPosition(current);
-        const meters = haversineMeters(current, currentStop);
+        const armPoint = currentStop.parkPoint ?? currentStop;
+        const meters = haversineMeters(current, armPoint);
         const armRadius = speedAwareArriveRadius(currentStop, current.speedMps);
         setDistanceMeters(meters);
         setEffectiveArriveRadius(armRadius);
@@ -536,8 +537,29 @@ export function RoutePlayer() {
               <span>Wake lock</span>
               <strong>{wakeStatus}</strong>
             </div>
+            <div className="feed-row">
+              <span>Sealed files</span>
+              <strong>{route.sealedStops?.length ?? 0}</strong>
+            </div>
             {playerState === "ended" && <button className="small-button" onClick={resetDemo}>Reset demo</button>}
           </div>
+          {route.sealedStops && route.sealedStops.length > 0 && (
+            <div className="panel">
+              <span className="corner-a" aria-hidden />
+              <span className="corner-b" aria-hidden />
+              <div className="file-row">
+                <span className="file-tab">SEALED FILES</span>
+                <span className="sealed">{route.sealedStops.length} HELD</span>
+              </div>
+              {route.sealedStops.map((sealedStop) => (
+                <div className="sealed-entry" key={sealedStop.id}>
+                  <h2>{String(sealedStop.order).padStart(2, "0")} {sealedStop.title}</h2>
+                  <p>{sealedStop.reason}</p>
+                  {sealedStop.safetyNote && <p>{sealedStop.safetyNote}</p>}
+                </div>
+              ))}
+            </div>
+          )}
             </>
           )}
         </section>
