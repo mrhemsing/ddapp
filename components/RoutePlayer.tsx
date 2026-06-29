@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { cacheRouteAudio, isRouteCached, type CacheProgress } from "@/lib/audio-cache";
 import { DarkDrivesAudioEngine } from "@/lib/audio-engine";
 import type { RoutePack, Stop } from "@/lib/route-data";
@@ -9,6 +9,10 @@ import { createWakeLockHandle } from "@/lib/wake-lock";
 type PlayerState = "preflight" | "ready" | "traveling" | "approaching" | "armed" | "playing" | "played" | "ended";
 type LocationMode = "unknown" | "watching" | "manual" | "denied";
 const activeDriveStates: PlayerState[] = ["traveling", "approaching", "armed", "playing", "played"];
+
+type SessionEvent =
+  | { type: "stopCompleted"; stopId: string; stopTitle: string; timestamp: string }
+  | { type: "ritual"; stopId: string; stopTitle: string; ritualId: string; ritualLabel: string; payoffFired: boolean; timestamp: string };
 
 type PositionFix = {
   lat: number;
@@ -41,6 +45,15 @@ function speedAwareArriveRadius(stop: Stop, speedMps: number | null) {
   return Math.round(Math.min(Math.max(stop.arriveRadiusM + speedBoost, stop.arriveRadiusM), stop.arriveRadiusM * 2.6));
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function approachProgress(distanceMeters: number, approachRadiusM: number, arriveRadiusM: number) {
+  const range = Math.max(approachRadiusM - arriveRadiusM, 1);
+  return clamp((approachRadiusM - distanceMeters) / range, 0, 1);
+}
+
 function stateCopy(playerState: PlayerState) {
   if (playerState === "preflight") return "Files sealed";
   if (playerState === "ready") return "Ready";
@@ -59,6 +72,24 @@ function presenceCopy(playerState: PlayerState, distanceMeters: number | null) {
   if (playerState === "played") return "The file is open";
   if (playerState === "traveling") return "Nothing on the glass";
   return "Waiting";
+}
+
+function localTime(timestamp: string) {
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(timestamp));
+}
+
+function recapStats(events: SessionEvent[]) {
+  const completedStops = events.filter((event) => event.type === "stopCompleted");
+  const rituals = events.filter((event) => event.type === "ritual");
+  const answered = rituals.filter((event) => event.payoffFired);
+  const featured = answered[0] ?? rituals[0] ?? completedStops.at(-1);
+
+  return {
+    completedStops,
+    rituals,
+    answered,
+    featured
+  };
 }
 
 function projectPoint(position: Pick<Stop, "lat" | "lng">, bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }) {
@@ -140,6 +171,7 @@ export function RoutePlayer() {
   const [activeStopIndex, setActiveStopIndex] = useState(0);
   const [distanceMeters, setDistanceMeters] = useState<number | null>(null);
   const [effectiveArriveRadius, setEffectiveArriveRadius] = useState<number | null>(null);
+  const [approachIntensity, setApproachIntensity] = useState(0);
   const [currentPosition, setCurrentPosition] = useState<PositionFix | null>(null);
   const [locationMode, setLocationMode] = useState<LocationMode>("unknown");
   const [audioStatus, setAudioStatus] = useState("Locked");
@@ -147,6 +179,8 @@ export function RoutePlayer() {
   const [isNarrating, setIsNarrating] = useState(false);
   const [isForeground, setIsForeground] = useState(true);
   const [ritualMessage, setRitualMessage] = useState("");
+  const [sessionEvents, setSessionEvents] = useState<SessionEvent[]>([]);
+  const [shareStatus, setShareStatus] = useState("");
   const audioEngine = useRef<DarkDrivesAudioEngine | null>(null);
   const wakeLock = useRef(createWakeLockHandle());
   const lastLocationUpdate = useRef(0);
@@ -155,6 +189,12 @@ export function RoutePlayer() {
   const currentStop = route?.stops[activeStopIndex] ?? null;
   const ambientUrl = currentStop?.audio.ambientFile ?? "/audio/ambient-low.wav";
   const isDriveActive = activeDriveStates.includes(playerState);
+  const heartbeatMs = Math.round(2200 - approachIntensity * 1500);
+  const screenStyle = {
+    "--approach-intensity": approachIntensity.toFixed(3),
+    "--heartbeat-ms": `${heartbeatMs}ms`
+  } as CSSProperties;
+  const stats = recapStats(sessionEvents);
 
   useEffect(() => {
     let active = true;
@@ -256,11 +296,14 @@ export function RoutePlayer() {
         const armPoint = currentStop.parkPoint ?? currentStop;
         const meters = haversineMeters(current, armPoint);
         const armRadius = speedAwareArriveRadius(currentStop, current.speedMps);
+        const intensity = approachProgress(meters, currentStop.approachRadiusM, armRadius);
         setDistanceMeters(meters);
         setEffectiveArriveRadius(armRadius);
+        setApproachIntensity(intensity);
         setLocationMode("watching");
 
         if (playerState === "armed" || hasAutoArmedStop.current) {
+          audioEngine.current?.setAmbientVolume(0.44);
           return;
         }
 
@@ -268,13 +311,14 @@ export function RoutePlayer() {
           hasAutoArmedStop.current = true;
           navigator.vibrate?.(80);
           setPlayerState("armed");
-          audioEngine.current?.setAmbientVolume(0.36);
+          audioEngine.current?.setAmbientVolume(0.44);
         } else if (meters <= currentStop.approachRadiusM) {
           setPlayerState("approaching");
           void audioEngine.current?.startAmbient(ambientUrl);
-          audioEngine.current?.setAmbientVolume(0.34);
+          audioEngine.current?.setAmbientVolume(0.2 + intensity * 0.22);
         } else if (playerState === "approaching" && meters > currentStop.approachRadiusM + 75) {
           setPlayerState("traveling");
+          setApproachIntensity(0);
           audioEngine.current?.setAmbientVolume(0.2);
         }
       },
@@ -361,11 +405,20 @@ export function RoutePlayer() {
     if (playerState === "armed") {
       setPlayerState("playing");
       await audioEngine.current?.startAmbient(ambientUrl);
-      setIsNarrating(true);
-      await audioEngine.current?.playNarration(currentStop.audio.narrationFile);
-      setIsNarrating(false);
-      setPlayerState("played");
-      return;
+        setIsNarrating(true);
+        await audioEngine.current?.playNarration(currentStop.audio.narrationFile);
+        setIsNarrating(false);
+        setSessionEvents((events) => [
+          ...events,
+          {
+            type: "stopCompleted",
+            stopId: currentStop.id,
+            stopTitle: currentStop.title,
+            timestamp: new Date().toISOString()
+          }
+        ]);
+        setPlayerState("played");
+        return;
     }
 
     if (playerState === "played") {
@@ -383,6 +436,7 @@ export function RoutePlayer() {
         setActiveStopIndex((index) => index + 1);
         setDistanceMeters(null);
         setEffectiveArriveRadius(null);
+        setApproachIntensity(0);
         setRitualMessage("");
         hasAutoArmedStop.current = false;
         setPlayerState("traveling");
@@ -401,7 +455,8 @@ export function RoutePlayer() {
     }
 
     void audioEngine.current?.startAmbient(ambientUrl);
-    audioEngine.current?.setAmbientVolume(0.36);
+    audioEngine.current?.setAmbientVolume(0.44);
+    setApproachIntensity(1);
     hasAutoArmedStop.current = true;
     setPlayerState("armed");
   }
@@ -410,30 +465,93 @@ export function RoutePlayer() {
     setActiveStopIndex(0);
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
+    setApproachIntensity(0);
     setCurrentPosition(null);
     lastPositionFix.current = null;
     hasAutoArmedStop.current = false;
     setRitualMessage("");
+    setSessionEvents([]);
+    setShareStatus("");
     setPlayerState("ready");
   }
 
   async function triggerRitual(ritual: NonNullable<Stop["rituals"]>[number]) {
+    if (!currentStop) {
+      return;
+    }
+
     setRitualMessage(ritual.instructionText);
     if (ritual.cueAudio) {
       setIsNarrating(true);
       await audioEngine.current?.playNarration(ritual.cueAudio);
       setIsNarrating(false);
     }
-    if (ritual.payoff && Math.random() <= ritual.payoff.probability) {
+    const payoffFired = Boolean(ritual.payoff && Math.random() <= ritual.payoff.probability);
+
+    if (payoffFired && ritual.payoff) {
       await new Promise((resolve) => window.setTimeout(resolve, ritual.payoff?.delayMs ?? 0));
       await audioEngine.current?.playEffect(ritual.payoff.audioFile, 0.34);
+    }
+
+    setSessionEvents((events) => [
+      ...events,
+      {
+        type: "ritual",
+        stopId: currentStop.id,
+        stopTitle: currentStop.title,
+        ritualId: ritual.id,
+        ritualLabel: ritual.label,
+        payoffFired,
+        timestamp: new Date().toISOString()
+      }
+    ]);
+  }
+
+  async function shareRecap() {
+    const featuredLine = stats.featured
+      ? stats.featured.type === "ritual" && stats.featured.payoffFired
+        ? `${stats.featured.stopTitle} answered at ${localTime(stats.featured.timestamp)}.`
+        : `${stats.featured.stopTitle} opened at ${localTime(stats.featured.timestamp)}.`
+      : "The route closed without a witness.";
+    const text = `I survived Dark Drives. ${stats.completedStops.length} stops opened. ${stats.rituals.length} rituals performed. ${stats.answered.length} answered back. ${featuredLine} #DarkDrives`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+<rect width="1200" height="630" fill="#0a0908"/>
+<rect x="46" y="46" width="1108" height="538" fill="none" stroke="#3a352f" stroke-width="3"/>
+<text x="82" y="132" fill="#b3000f" font-family="Impact, Arial Black, sans-serif" font-size="78">YOU SURVIVED</text>
+<text x="86" y="190" fill="#e6e1d6" font-family="Arial, sans-serif" font-size="34">The Dark Side of Saskatoon</text>
+<text x="86" y="292" fill="#72ff57" font-family="Consolas, monospace" font-size="42">${stats.completedStops.length} STOPS OPENED</text>
+<text x="86" y="356" fill="#e6e1d6" font-family="Consolas, monospace" font-size="34">${stats.rituals.length} RITUALS PERFORMED</text>
+<text x="86" y="412" fill="#e6e1d6" font-family="Consolas, monospace" font-size="34">${stats.answered.length} ANSWERED BACK</text>
+<text x="86" y="500" fill="#a39d92" font-family="Arial, sans-serif" font-size="30">${featuredLine.replace(/[<&>]/g, "")}</text>
+<text x="86" y="552" fill="#b3000f" font-family="Consolas, monospace" font-size="28">#DarkDrives</text>
+</svg>`;
+
+    const file = new File([new Blob([svg], { type: "image/svg+xml" })], "dark-drives-recap.svg", { type: "image/svg+xml" });
+
+    try {
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ title: "I survived Dark Drives", text, files: [file] });
+      } else if (navigator.share) {
+        await navigator.share({ title: "I survived Dark Drives", text });
+      } else {
+        await navigator.clipboard.writeText(text);
+        setShareStatus("Recap copied.");
+        return;
+      }
+      setShareStatus("Share sheet opened.");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setShareStatus("Share cancelled.");
+      } else {
+        setShareStatus("Share unavailable.");
+      }
     }
   }
 
   return (
     <main className="shell">
       <div className="phone">
-        <section className={`screen ${isDriveActive ? "drive-active" : ""}`} aria-label="Dark Drives route player">
+        <section className={`screen ${isDriveActive ? "drive-active" : ""}`} style={screenStyle} aria-label="Dark Drives route player">
           <header className="topbar">
             <div className="brand">
               <span className="kicker">Dark Drives</span>
@@ -590,6 +708,40 @@ export function RoutePlayer() {
                   {sealedStop.safetyNote && <p>{sealedStop.safetyNote}</p>}
                 </div>
               ))}
+            </div>
+          )}
+          {playerState === "ended" && (
+            <div className="panel recap-panel">
+              <span className="corner-a" aria-hidden />
+              <span className="corner-b" aria-hidden />
+              <div className="file-row">
+                <span className="file-tab">SURVIVAL FILE</span>
+                <span className="sealed">{stats.answered.length} ANSWERED</span>
+              </div>
+              <h2>You survived</h2>
+              <div className="recap-grid">
+                <div>
+                  <span>Stops opened</span>
+                  <strong>{stats.completedStops.length}</strong>
+                </div>
+                <div>
+                  <span>Rituals</span>
+                  <strong>{stats.rituals.length}</strong>
+                </div>
+                <div>
+                  <span>Answered back</span>
+                  <strong>{stats.answered.length}</strong>
+                </div>
+              </div>
+              {stats.featured && (
+                <p>
+                  {stats.featured.type === "ritual" && stats.featured.payoffFired
+                    ? `${stats.featured.stopTitle} answered you at ${localTime(stats.featured.timestamp)}.`
+                    : `${stats.featured.stopTitle} opened at ${localTime(stats.featured.timestamp)}.`}
+                </p>
+              )}
+              <button className="small-button" onClick={() => void shareRecap()}>Share recap</button>
+              {shareStatus && <p>{shareStatus}</p>}
             </div>
           )}
             </>
