@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cacheRouteAudio, isRouteCached, type CacheProgress } from "@/lib/audio-cache";
 import { DarkDrivesAudioEngine } from "@/lib/audio-engine";
-import { fakeRoute, type Stop } from "@/lib/route-data";
+import type { RoutePack, Stop } from "@/lib/route-data";
 import { createWakeLockHandle } from "@/lib/wake-lock";
 
 type PlayerState = "preflight" | "ready" | "traveling" | "approaching" | "armed" | "playing" | "played" | "ended";
@@ -50,7 +50,7 @@ function RouteMap({
   activeStopIndex,
   currentPosition
 }: {
-  route: typeof fakeRoute;
+  route: RoutePack;
   activeStopIndex: number;
   currentPosition: PositionFix | null;
 }) {
@@ -110,7 +110,8 @@ function RouteMap({
 }
 
 export function RoutePlayer() {
-  const route = fakeRoute;
+  const [route, setRoute] = useState<RoutePack | null>(null);
+  const [routeError, setRouteError] = useState("");
   const [playerState, setPlayerState] = useState<PlayerState>("preflight");
   const [cacheProgress, setCacheProgress] = useState<CacheProgress>({ complete: 0, total: 0, percent: 0 });
   const [cacheError, setCacheError] = useState("");
@@ -129,10 +130,41 @@ export function RoutePlayer() {
   const lastLocationUpdate = useRef(0);
   const lastPositionFix = useRef<PositionFix | null>(null);
   const hasAutoArmedStop = useRef(false);
-  const currentStop = route.stops[activeStopIndex];
-  const ambientUrl = currentStop.audio.ambientFile ?? "/audio/ambient-low.wav";
+  const currentStop = route?.stops[activeStopIndex] ?? null;
+  const ambientUrl = currentStop?.audio.ambientFile ?? "/audio/ambient-low.wav";
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadRoute() {
+      setRouteError("");
+      try {
+        const response = await fetch("/api/route/pack", { cache: "no-store" });
+        if (!response.ok) {
+          const data = await response.json().catch(() => null);
+          throw new Error(data?.error ?? "Route pack unavailable.");
+        }
+
+        const data = (await response.json()) as RoutePack;
+        if (active) {
+          setRoute(data);
+        }
+      } catch (error) {
+        if (active) {
+          setRouteError(error instanceof Error ? error.message : "Route pack unavailable.");
+        }
+      }
+    }
+
+    void loadRoute();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const primary = useMemo(() => {
+    if (!route) return { label: "Loading Route", disabled: true, className: "" };
     if (playerState === "preflight") return { label: "Prepare Route", disabled: false, className: "" };
     if (playerState === "ready") return { label: "Begin Drive", disabled: false, className: "ready" };
     if (playerState === "traveling") return { label: "Traveling", disabled: true, className: "" };
@@ -141,9 +173,13 @@ export function RoutePlayer() {
     if (playerState === "playing") return { label: "Playing", disabled: true, className: "playing" };
     if (playerState === "played") return { label: activeStopIndex === route.stops.length - 1 ? "End Route" : "Next Stop", disabled: false, className: "" };
     return { label: "Route Complete", disabled: true, className: "" };
-  }, [activeStopIndex, distanceMeters, playerState, route.stops.length]);
+  }, [activeStopIndex, distanceMeters, playerState, route]);
 
   useEffect(() => {
+    if (!route) {
+      return;
+    }
+
     audioEngine.current = new DarkDrivesAudioEngine();
 
     void isRouteCached(route).then((cached) => {
@@ -162,7 +198,7 @@ export function RoutePlayer() {
   }, []);
 
   useEffect(() => {
-    if (!isForeground || (playerState !== "traveling" && playerState !== "approaching" && playerState !== "armed")) {
+    if (!route || !currentStop || !isForeground || (playerState !== "traveling" && playerState !== "approaching" && playerState !== "armed")) {
       return;
     }
 
@@ -250,6 +286,10 @@ export function RoutePlayer() {
   }, [playerState]);
 
   async function handlePrimary() {
+    if (!route || !currentStop) {
+      return;
+    }
+
     if (playerState === "preflight") {
       setCacheError("");
       try {
@@ -332,6 +372,10 @@ export function RoutePlayer() {
   }
 
   function armManually() {
+    if (!currentStop) {
+      return;
+    }
+
     void audioEngine.current?.startAmbient(ambientUrl);
     audioEngine.current?.setAmbientVolume(0.36);
     hasAutoArmedStop.current = true;
@@ -372,10 +416,24 @@ export function RoutePlayer() {
               <div className="wordmark" aria-label="Dark Drives">
                 Dark Drives<sup>TM</sup>
               </div>
-              <h1 className="title">{route.title}</h1>
+              <h1 className="title">{route?.title ?? "Loading route"}</h1>
             </div>
             <span className="status-pill">{playerState}</span>
           </header>
+
+          {!route || !currentStop ? (
+            <div className="panel">
+              <span className="corner-a" aria-hidden />
+              <span className="corner-b" aria-hidden />
+              <div className="file-row">
+                <span className="file-tab">ROUTE PACK</span>
+                <span className="sealed">{routeError ? "LOCKED" : "LOADING"}</span>
+              </div>
+              <h2>{routeError || "Loading your city pack"}</h2>
+              <p>The player only loads full route data after the server verifies access.</p>
+            </div>
+          ) : (
+            <>
 
           <div className="hero">
             <span className="stop-count">
@@ -480,6 +538,8 @@ export function RoutePlayer() {
             </div>
             {playerState === "ended" && <button className="small-button" onClick={resetDemo}>Reset demo</button>}
           </div>
+            </>
+          )}
         </section>
       </div>
     </main>

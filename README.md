@@ -25,6 +25,13 @@ Slice 2 GPS/handoff is layered onto the player:
 - Google Maps handoff targets `parkPoint` when present for safe legal vantage routing
 - offline schematic route map, styled after the sales-site route preview, with no tile dependency
 
+Production route content is loaded through `app/api/route/pack` after entitlement checks. In production, configure exactly one private route payload env var:
+
+- `DARK_DRIVES_ROUTE_PACK_JSON`
+- `DARK_DRIVES_ROUTE_PACK_B64`
+
+The public client should fetch the route pack from the API instead of importing coordinate/script data directly.
+
 ## Run
 
 ```bash
