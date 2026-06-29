@@ -73,7 +73,7 @@ export const fakeRoute: RoutePack = {
   introAudio: "/audio/elevenlabs-review/intro.mp3",
   introScript: `Everything you are about to hear is tied to a real place in Saskatoon. I will be your guide as we explore the cities most haunted roads, parks and landmarks.
 
-Saskatoon looks ordinary in the daylight. A river. A few bridges. Quiet streets that run out into fields. But after dark the city keeps a second set of records, and tonight, I will reading them out loud.
+Saskatoon looks ordinary in the daylight. A river. A few bridges. Quiet streets that run out into fields. But after dark the city keeps a second set of records, and tonight, I will be reading them out loud.
 
 Here are the rules. Stay in the car unless we tell you it is safe to step out. Keep your doors locked. Keep your voices down, because some of these places answer back. When the screen turns red, you have arrived. That is when one of you presses play, and the rest of you stop talking.
 
