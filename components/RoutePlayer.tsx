@@ -8,6 +8,8 @@ import { createWakeLockHandle } from "@/lib/wake-lock";
 
 type PlayerState = "preflight" | "ready" | "traveling" | "approaching" | "armed" | "playing" | "played" | "ended";
 type LocationMode = "unknown" | "watching" | "manual" | "denied";
+const activeDriveStates: PlayerState[] = ["traveling", "approaching", "armed", "playing", "played"];
+
 type PositionFix = {
   lat: number;
   lng: number;
@@ -37,6 +39,26 @@ function speedAwareArriveRadius(stop: Stop, speedMps: number | null) {
   const roadSpeedMps = Math.max(speedMps ?? 0, 0);
   const speedBoost = roadSpeedMps * 6;
   return Math.round(Math.min(Math.max(stop.arriveRadiusM + speedBoost, stop.arriveRadiusM), stop.arriveRadiusM * 2.6));
+}
+
+function stateCopy(playerState: PlayerState) {
+  if (playerState === "preflight") return "Files sealed";
+  if (playerState === "ready") return "Ready";
+  if (playerState === "traveling") return "The road is quiet";
+  if (playerState === "approaching") return "Something is close";
+  if (playerState === "armed") return "It's here";
+  if (playerState === "playing") return "Listen";
+  if (playerState === "played") return "File open";
+  return "Route closed";
+}
+
+function presenceCopy(playerState: PlayerState, distanceMeters: number | null) {
+  if (playerState === "approaching" && distanceMeters !== null) return `${distanceMeters.toLocaleString()}m`;
+  if (playerState === "armed") return "It found the car";
+  if (playerState === "playing") return "Signal active";
+  if (playerState === "played") return "The file is open";
+  if (playerState === "traveling") return "Nothing on the glass";
+  return "Waiting";
 }
 
 function projectPoint(position: Pick<Stop, "lat" | "lng">, bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }) {
@@ -132,6 +154,7 @@ export function RoutePlayer() {
   const hasAutoArmedStop = useRef(false);
   const currentStop = route?.stops[activeStopIndex] ?? null;
   const ambientUrl = currentStop?.audio.ambientFile ?? "/audio/ambient-low.wav";
+  const isDriveActive = activeDriveStates.includes(playerState);
 
   useEffect(() => {
     let active = true;
@@ -167,13 +190,13 @@ export function RoutePlayer() {
     if (!route) return { label: "Loading Route", disabled: true, className: "" };
     if (playerState === "preflight") return { label: "Prepare Route", disabled: false, className: "" };
     if (playerState === "ready") return { label: "Begin Drive", disabled: false, className: "ready" };
-    if (playerState === "traveling") return { label: "Traveling", disabled: true, className: "" };
-    if (playerState === "approaching") return { label: distanceMeters === null ? "Approaching" : `Approaching ${distanceMeters}m`, disabled: true, className: "approaching" };
+    if (playerState === "traveling") return { label: "Keep Driving", disabled: true, className: "" };
+    if (playerState === "approaching") return { label: "Something Is Close", disabled: true, className: "approaching" };
     if (playerState === "armed") return { label: "Wake It", disabled: false, className: "ready" };
-    if (playerState === "playing") return { label: "Playing", disabled: true, className: "playing" };
-    if (playerState === "played") return { label: activeStopIndex === route.stops.length - 1 ? "End Route" : "Next Stop", disabled: false, className: "" };
-    return { label: "Route Complete", disabled: true, className: "" };
-  }, [activeStopIndex, distanceMeters, playerState, route]);
+    if (playerState === "playing") return { label: "Listen", disabled: true, className: "playing" };
+    if (playerState === "played") return { label: activeStopIndex === route.stops.length - 1 ? "Close Route" : "Next File", disabled: false, className: "" };
+    return { label: "Route Closed", disabled: true, className: "" };
+  }, [activeStopIndex, playerState, route]);
 
   useEffect(() => {
     if (!route) {
@@ -410,7 +433,7 @@ export function RoutePlayer() {
   return (
     <main className="shell">
       <div className="phone">
-        <section className="screen" aria-label="Dark Drives route player">
+        <section className={`screen ${isDriveActive ? "drive-active" : ""}`} aria-label="Dark Drives route player">
           <header className="topbar">
             <div className="brand">
               <span className="kicker">Dark Drives</span>
@@ -419,7 +442,7 @@ export function RoutePlayer() {
               </div>
               <h1 className="title">{route?.title ?? "Loading route"}</h1>
             </div>
-            <span className="status-pill">{playerState}</span>
+            <span className="status-pill">{stateCopy(playerState)}</span>
           </header>
 
           {!route || !currentStop ? (
@@ -441,8 +464,9 @@ export function RoutePlayer() {
               Stop {activeStopIndex + 1} of {route.stops.length}
             </span>
             <h2 className="stop-name">{currentStop.title}</h2>
-            <div className="distance">
-              {distanceMeters === null ? currentStop.story.teaser : `${distanceMeters.toLocaleString()}m away`}
+            <div className="presence" data-state={playerState}>
+              <span className="presence-dot" aria-hidden />
+              <span>{presenceCopy(playerState, distanceMeters)}</span>
             </div>
           </div>
 
@@ -471,8 +495,19 @@ export function RoutePlayer() {
             </div>
           )}
 
+          {isDriveActive && isNarrating && (
+            <div className="signal-meter drive-signal" aria-label="Narration signal">
+              {Array.from({ length: 24 }, (_, index) => (
+                <span key={index} style={{ height: `${22 + ((index * 19) % 74)}%` }} />
+              ))}
+            </div>
+          )}
+
           {playerState !== "preflight" && (
-            <RouteMap route={route} activeStopIndex={activeStopIndex} currentPosition={currentPosition} />
+            <details className="map-drawer">
+              <summary>Route signal</summary>
+              <RouteMap route={route} activeStopIndex={activeStopIndex} currentPosition={currentPosition} />
+            </details>
           )}
 
           {playerState === "preflight" && (
@@ -501,22 +536,19 @@ export function RoutePlayer() {
               <span className="corner-b" aria-hidden />
               <div className="file-row">
                 <span className="file-tab">STOP {String(activeStopIndex + 1).padStart(2, "0")}</span>
-                <span className="sealed">{playerState === "armed" ? "ARMED" : playerState === "playing" ? "LIVE" : "OPEN"}</span>
+                <span className="sealed">{playerState === "armed" ? "OPENING" : playerState === "playing" ? "ON AIR" : "OPEN"}</span>
               </div>
-              <h2>{currentStop.safetyNote}</h2>
+              <h2>{stateCopy(playerState)}</h2>
               {locationMode === "denied" && <p>Location is off. You will arm each stop yourself.</p>}
-              <p>{currentStop.story.body}</p>
-              {isNarrating && (
-                <div className="signal-meter" aria-label="Narration signal">
-                  {Array.from({ length: 24 }, (_, index) => (
-                    <span key={index} style={{ height: `${22 + ((index * 19) % 74)}%` }} />
-                  ))}
-                </div>
-              )}
+              <p className="safety-line">{currentStop.safetyNote}</p>
+              <details className="read-disclosure">
+                <summary>Read it</summary>
+                <p>{currentStop.story.body}</p>
+              </details>
             </div>
           )}
 
-          <div className="feed">
+          {!isDriveActive && <div className="feed">
             <div className="feed-row">
               <span>Audio</span>
               <strong>{audioStatus}</strong>
@@ -542,7 +574,7 @@ export function RoutePlayer() {
               <strong>{route.sealedStops?.length ?? 0}</strong>
             </div>
             {playerState === "ended" && <button className="small-button" onClick={resetDemo}>Reset demo</button>}
-          </div>
+          </div>}
           {route.sealedStops && route.sealedStops.length > 0 && (
             <div className="panel">
               <span className="corner-a" aria-hidden />

@@ -104,6 +104,27 @@ button {
   padding: 22px;
 }
 
+.screen.drive-active {
+  gap: 14px;
+  background:
+    radial-gradient(circle at 50% 34%, rgba(159, 0, 11, 0.11), transparent 42%),
+    linear-gradient(180deg, rgba(10, 9, 8, 0.94), rgba(3, 3, 3, 0.98));
+}
+
+.screen.drive-active .topbar {
+  opacity: 0.72;
+}
+
+.screen.drive-active .title,
+.screen.drive-active .kicker {
+  display: none;
+}
+
+.screen.drive-active .wordmark {
+  font-size: 26px;
+  opacity: 0.72;
+}
+
 .topbar {
   display: flex;
   align-items: center;
@@ -165,6 +186,7 @@ button {
 
 .status-pill {
   min-width: 92px;
+  max-width: 156px;
   border: 1px solid var(--blood-dim);
   border-radius: 2px;
   padding: 8px 10px;
@@ -173,6 +195,7 @@ button {
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.12em;
+  line-height: 1.15;
   text-align: center;
   text-transform: uppercase;
 }
@@ -208,6 +231,42 @@ button {
   line-height: 1.45;
 }
 
+.presence {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 36px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(159, 0, 11, 0.42);
+  background: rgba(10, 9, 8, 0.58);
+  color: var(--bone-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  padding: 0 12px;
+  text-transform: uppercase;
+}
+
+.presence-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--blood-hot);
+  box-shadow: 0 0 18px rgba(179, 0, 15, 0.58);
+  animation: presencePulse 2s ease-in-out infinite;
+}
+
+.presence[data-state="approaching"] .presence-dot,
+.presence[data-state="armed"] .presence-dot {
+  animation-duration: 980ms;
+}
+
+.presence[data-state="playing"] .presence-dot {
+  background: var(--sick);
+  box-shadow: 0 0 18px rgba(114, 255, 87, 0.44);
+}
+
 .primary {
   width: 100%;
   min-height: 96px;
@@ -226,6 +285,11 @@ button {
     background 160ms ease,
     box-shadow 160ms ease,
     opacity 160ms ease;
+}
+
+.drive-active .primary {
+  min-height: 104px;
+  background: rgba(6, 5, 5, 0.8);
 }
 
 .primary:disabled {
@@ -343,6 +407,10 @@ button {
   padding: 20px 16px 16px;
 }
 
+.drive-active .panel {
+  background: rgba(7, 6, 6, 0.68);
+}
+
 .panel::before,
 .panel::after,
 .corner-a,
@@ -420,6 +488,55 @@ button {
 .panel p {
   color: var(--ash);
   line-height: 1.45;
+}
+
+.safety-line {
+  border-left: 2px solid rgba(179, 0, 15, 0.7);
+  padding-left: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.read-disclosure,
+.map-drawer {
+  display: grid;
+  gap: 10px;
+}
+
+.read-disclosure summary,
+.map-drawer summary {
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--bone-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  line-height: 44px;
+  list-style: none;
+  text-transform: uppercase;
+}
+
+.read-disclosure summary::-webkit-details-marker,
+.map-drawer summary::-webkit-details-marker {
+  display: none;
+}
+
+.read-disclosure summary::before,
+.map-drawer summary::before {
+  content: "+ ";
+  color: var(--blood-hot);
+}
+
+.read-disclosure[open] summary::before,
+.map-drawer[open] summary::before {
+  content: "- ";
+}
+
+.read-disclosure p {
+  padding-top: 2px;
 }
 
 .sealed-entry {
@@ -502,6 +619,19 @@ button {
     rgba(10, 9, 8, 0.64);
   background-size: 18px 18px;
   padding: 12px;
+}
+
+.drive-active .route-map {
+  opacity: 0.72;
+}
+
+.map-drawer {
+  border-top: 1px solid rgba(230, 225, 214, 0.08);
+  border-bottom: 1px solid rgba(230, 225, 214, 0.08);
+}
+
+.map-drawer .route-map {
+  margin-bottom: 10px;
 }
 
 .map-caption {
@@ -605,6 +735,12 @@ button {
   border: 1px solid rgba(114, 255, 87, 0.22);
   background: rgba(21, 61, 28, 0.16);
   padding: 8px;
+}
+
+.drive-signal {
+  height: 32px;
+  border-color: rgba(114, 255, 87, 0.16);
+  background: rgba(4, 18, 7, 0.2);
 }
 
 .signal-meter span {
@@ -870,5 +1006,17 @@ button {
   }
   50% {
     opacity: 0.95;
+  }
+}
+
+@keyframes presencePulse {
+  0%,
+  100% {
+    opacity: 0.44;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
   }
 }
