@@ -360,6 +360,12 @@ button {
   color: var(--sick);
 }
 
+.secondary:disabled,
+.small-button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
 .small-button {
   min-height: 44px;
   padding: 0 14px;
@@ -502,13 +508,19 @@ button {
 }
 
 .read-disclosure,
-.map-drawer {
+.map-drawer,
+.sealed-disclosure,
+.sealed-stop-detail,
+.diagnostics {
   display: grid;
   gap: 10px;
 }
 
 .read-disclosure summary,
-.map-drawer summary {
+.map-drawer summary,
+.sealed-disclosure summary,
+.sealed-stop-detail summary,
+.diagnostics summary {
   min-height: 44px;
   cursor: pointer;
   color: var(--bone-dim);
@@ -522,18 +534,27 @@ button {
 }
 
 .read-disclosure summary::-webkit-details-marker,
-.map-drawer summary::-webkit-details-marker {
+.map-drawer summary::-webkit-details-marker,
+.sealed-disclosure summary::-webkit-details-marker,
+.sealed-stop-detail summary::-webkit-details-marker,
+.diagnostics summary::-webkit-details-marker {
   display: none;
 }
 
 .read-disclosure summary::before,
-.map-drawer summary::before {
+.map-drawer summary::before,
+.sealed-disclosure summary::before,
+.sealed-stop-detail summary::before,
+.diagnostics summary::before {
   content: "+ ";
   color: var(--blood-hot);
 }
 
 .read-disclosure[open] summary::before,
-.map-drawer[open] summary::before {
+.map-drawer[open] summary::before,
+.sealed-disclosure[open] > summary::before,
+.sealed-stop-detail[open] > summary::before,
+.diagnostics[open] summary::before {
   content: "- ";
 }
 
@@ -567,6 +588,44 @@ button {
 .loop-list {
   display: grid;
   gap: 8px;
+}
+
+.loop-summary {
+  display: grid;
+  gap: 12px;
+}
+
+.loop-summary > div {
+  display: grid;
+  gap: 5px;
+  border: 1px solid rgba(179, 0, 15, 0.45);
+  background: rgba(10, 9, 8, 0.66);
+  padding: 12px;
+}
+
+.loop-summary strong {
+  color: var(--bone);
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.loop-summary span,
+.loop-summary em {
+  color: var(--ash);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.loop-summary em {
+  color: var(--sick);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .loop-button {
@@ -609,6 +668,70 @@ button {
   font-weight: 900;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+
+.sealed-disclosure {
+  border-top: 1px solid rgba(230, 225, 214, 0.08);
+  padding-top: 4px;
+}
+
+.sealed-disclosure > summary {
+  line-height: 1.25;
+  padding-block: 12px;
+}
+
+.sealed-list {
+  display: grid;
+  gap: 8px;
+}
+
+.sealed-stop-detail {
+  border: 1px solid rgba(230, 225, 214, 0.1);
+  background: rgba(10, 9, 8, 0.58);
+  padding: 0 10px;
+}
+
+.sealed-stop-detail summary {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.sealed-stop-detail summary::before {
+  content: "";
+  display: none;
+}
+
+.sealed-stop-detail[open] > summary::before {
+  content: "";
+}
+
+.sealed-stop-detail span,
+.sealed-stop-detail em {
+  color: var(--sick);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sealed-stop-detail strong {
+  color: var(--bone);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.sealed-stop-detail em {
+  color: var(--blood-hot);
+  text-align: right;
+}
+
+.sealed-stop-detail p {
+  border-top: 1px solid rgba(230, 225, 214, 0.08);
+  padding-block: 10px;
 }
 
 .stops-board {
@@ -932,10 +1055,18 @@ button {
   animation-duration: 1150ms;
 }
 
+.diagnostics {
+  margin-top: auto;
+}
+
+.diagnostics > summary {
+  min-height: 38px;
+  line-height: 38px;
+}
+
 .feed {
   display: grid;
   gap: 10px;
-  margin-top: auto;
 }
 
 .feed-row {

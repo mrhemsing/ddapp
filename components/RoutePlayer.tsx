@@ -200,6 +200,7 @@ export function RoutePlayer() {
   const [isStopsBoardOpen, setIsStopsBoardOpen] = useState(false);
   const [resumeState, setResumeState] = useState<ResumeState | null>(null);
   const [selectedLoopId, setSelectedLoopId] = useState<string | null>(null);
+  const [isLoopPickerOpen, setIsLoopPickerOpen] = useState(false);
   const [shareStatus, setShareStatus] = useState("");
   const audioEngine = useRef<DarkDrivesAudioEngine | null>(null);
   const screenRef = useRef<HTMLElement | null>(null);
@@ -227,6 +228,7 @@ export function RoutePlayer() {
     return new Map(legs.map((leg) => [`${leg.fromStopId}->${leg.toStopId}`, leg]));
   }, [selectedLoop]);
   const isDriveActive = activeDriveStates.includes(playerState);
+  const isPreDrive = playerState === "preflight" || playerState === "ready";
   const heartbeatMs = Math.round(2200 - approachIntensity * 1500);
   const stats = recapStats(sessionEvents);
   const completedStopIds = useMemo(
@@ -246,6 +248,9 @@ export function RoutePlayer() {
     (playerState === "traveling" || playerState === "approaching" || playerState === "armed")
   );
   const screenClassName = ["screen", isDriveActive ? "drive-active" : ""].filter(Boolean).join(" ");
+  const selectedLoopLiveCount = activeStops.length;
+  const selectedLoopHeldCount = selectedLoopSealedStops.length;
+  const selectedLoopFinale = activeStops.at(-1)?.title ?? currentStop?.title ?? "Final stop";
 
   useEffect(() => {
     screenRef.current?.style.setProperty("--approach-intensity", approachIntensity.toFixed(3));
@@ -603,6 +608,7 @@ export function RoutePlayer() {
     playbackToken.current += 1;
     audioEngine.current?.stopOneShots();
     setSelectedLoopId(loopId);
+    setIsLoopPickerOpen(false);
     setActiveStopIndex(0);
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
@@ -803,7 +809,7 @@ export function RoutePlayer() {
             </div>
           )}
 
-          {route.loops && route.loops.length > 0 && (playerState === "preflight" || playerState === "ready") && (
+          {route.loops && route.loops.length > 0 && isPreDrive && (
             <div className="panel loop-panel">
               <span className="corner-a" aria-hidden />
               <span className="corner-b" aria-hidden />
@@ -811,21 +817,54 @@ export function RoutePlayer() {
                 <span className="file-tab">ROUTE LOOP</span>
                 <span className="sealed">{selectedLoop?.estimatedDuration ?? "Choose"}</span>
               </div>
-              <div className="loop-list">
-                {route.loops.map((loop) => {
-                  const liveCount = loop.stopIds.filter((id) => stopById.has(id)).length;
-                  const heldCount = loop.stopIds.length - liveCount;
-                  const selected = loop.id === selectedLoop?.id;
+              {!isLoopPickerOpen && selectedLoop ? (
+                <div className="loop-summary">
+                  <div>
+                    <strong>{selectedLoop.title}</strong>
+                    <span>{selectedLoop.subtitle}</span>
+                    <em>
+                      {selectedLoopLiveCount} live stop{selectedLoopLiveCount === 1 ? "" : "s"} · {selectedLoop.estimatedDuration} · finale: {selectedLoopFinale}
+                    </em>
+                  </div>
+                  <button className="small-button" onClick={() => setIsLoopPickerOpen(true)}>Change loop</button>
+                </div>
+              ) : (
+                <div className="loop-list">
+                  {route.loops.map((loop) => {
+                    const liveCount = loop.stopIds.filter((id) => stopById.has(id)).length;
+                    const heldCount = loop.stopIds.length - liveCount;
+                    const selected = loop.id === selectedLoop?.id;
 
-                  return (
-                    <button className="loop-button" data-selected={selected} key={loop.id} onClick={() => selectLoop(loop.id)}>
-                      <strong>{loop.title}</strong>
-                      <span>{loop.subtitle}</span>
-                      <em>{liveCount} live{heldCount > 0 ? ` / ${heldCount} sealed` : ""}</em>
-                    </button>
-                  );
-                })}
-              </div>
+                    return (
+                      <button className="loop-button" data-selected={selected} key={loop.id} onClick={() => selectLoop(loop.id)}>
+                        <strong>{loop.title}</strong>
+                        <span>{loop.subtitle}</span>
+                        <em>{liveCount} live{heldCount > 0 ? ` / ${heldCount} sealed` : ""}</em>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {selectedLoopHeldCount > 0 && (
+                <details className="sealed-disclosure">
+                  <summary>
+                    {selectedLoopHeldCount} more stop{selectedLoopHeldCount === 1 ? "" : "s"} on this loop, locked until safe parking is confirmed
+                  </summary>
+                  <div className="sealed-list">
+                    {selectedLoopSealedStops.map((sealedStop) => (
+                      <details className="sealed-stop-detail" key={sealedStop.id}>
+                        <summary>
+                          <span>{String(sealedStop.order).padStart(2, "0")}</span>
+                          <strong>{sealedStop.title}</strong>
+                          <em>locked, needs parking</em>
+                        </summary>
+                        <p>{sealedStop.reason}</p>
+                        {sealedStop.safetyNote && <p>{sealedStop.safetyNote}</p>}
+                      </details>
+                    ))}
+                  </div>
+                </details>
+              )}
             </div>
           )}
 
@@ -848,15 +887,19 @@ export function RoutePlayer() {
             <button className="secondary" onClick={() => window.open(mapsUrl(currentStop), "_blank", "noopener,noreferrer")}>
               Drive There
             </button>
-            <button className="secondary" onClick={() => void armManually()} disabled={!canArmManually}>
-              I&apos;m Here
-            </button>
-            <button className="secondary" onClick={() => setIsStopsBoardOpen((open) => !open)} disabled={playerState === "preflight"}>
+            <button className="secondary" onClick={() => setIsStopsBoardOpen((open) => !open)}>
               Stops
             </button>
-            <button className="secondary" onClick={skipCurrentStop} disabled={!canSkip}>
-              Skip
-            </button>
+            {!isPreDrive && (
+              <>
+                <button className="secondary" onClick={() => void armManually()} disabled={!canArmManually}>
+                  I&apos;m Here
+                </button>
+                <button className="secondary" onClick={skipCurrentStop} disabled={!canSkip}>
+                  Skip
+                </button>
+              </>
+            )}
           </div>
 
           {isStopsBoardOpen && (
@@ -948,10 +991,11 @@ export function RoutePlayer() {
               <span className="corner-a" aria-hidden />
               <span className="corner-b" aria-hidden />
               <div className="file-row">
-                <span className="file-tab">STOP {String(activeStopIndex + 1).padStart(2, "0")}</span>
-                <span className="sealed">{playerState === "armed" ? "OPENING" : playerState === "playing" ? "ON AIR" : "OPEN"}</span>
+                <span className="file-tab">{playerState === "ready" ? "START HERE" : `STOP ${String(activeStopIndex + 1).padStart(2, "0")}`}</span>
+                <span className="sealed">{playerState === "ready" ? "READY" : playerState === "armed" ? "OPENING" : playerState === "playing" ? "ON AIR" : "OPEN"}</span>
               </div>
-              <h2>{stateCopy(playerState)}</h2>
+              <h2>{playerState === "ready" ? currentStop.title : stateCopy(playerState)}</h2>
+              {playerState === "ready" && <p>{currentStop.story.teaser}</p>}
               {locationMode === "denied" && <p>Location is off. You will arm each stop yourself.</p>}
               <p className="safety-line">{currentStop.safetyNote}</p>
               <details className="read-disclosure">
@@ -961,50 +1005,36 @@ export function RoutePlayer() {
             </div>
           )}
 
-          {!isDriveActive && <div className="feed">
-            <div className="feed-row">
-              <span>Audio</span>
-              <strong>{audioStatus}</strong>
-            </div>
-            <div className="feed-row">
-              <span>Cache</span>
-              <strong>{cacheProgress.percent === 100 ? "Ready offline" : `${cacheProgress.percent}%`}</strong>
-            </div>
-            <div className="feed-row">
-              <span>Location</span>
-              <strong>{locationMode === "denied" ? "Manual mode" : locationMode}</strong>
-            </div>
-            <div className="feed-row">
-              <span>Arm radius</span>
-              <strong>{effectiveArriveRadius ? `${effectiveArriveRadius}m` : `${currentStop.arriveRadiusM}m`}</strong>
-            </div>
-            <div className="feed-row">
-              <span>Wake lock</span>
-              <strong>{wakeStatus}</strong>
-            </div>
-            <div className="feed-row">
-              <span>Sealed files</span>
-              <strong>{selectedLoopSealedStops.length}</strong>
-            </div>
-            {playerState === "ended" && <button className="small-button" onClick={resetDemo}>Reset demo</button>}
-          </div>}
-          {selectedLoopSealedStops.length > 0 && (
-            <div className="panel">
-              <span className="corner-a" aria-hidden />
-              <span className="corner-b" aria-hidden />
-              <div className="file-row">
-                <span className="file-tab">SEALED FILES</span>
-                <span className="sealed">{selectedLoopSealedStops.length} HELD</span>
+          <details className="diagnostics">
+            <summary>Diagnostics</summary>
+            <div className="feed">
+              <div className="feed-row">
+                <span>Audio</span>
+                <strong>{audioStatus}</strong>
               </div>
-              {selectedLoopSealedStops.map((sealedStop) => (
-                <div className="sealed-entry" key={sealedStop.id}>
-                  <h2>{String(sealedStop.order).padStart(2, "0")} {sealedStop.title}</h2>
-                  <p>{sealedStop.reason}</p>
-                  {sealedStop.safetyNote && <p>{sealedStop.safetyNote}</p>}
-                </div>
-              ))}
+              <div className="feed-row">
+                <span>Cache</span>
+                <strong>{cacheProgress.percent === 100 ? "Ready offline" : `${cacheProgress.percent}%`}</strong>
+              </div>
+              <div className="feed-row">
+                <span>Location</span>
+                <strong>{locationMode === "denied" ? "Manual mode" : locationMode}</strong>
+              </div>
+              <div className="feed-row">
+                <span>Arm radius</span>
+                <strong>{effectiveArriveRadius ? `${effectiveArriveRadius}m` : `${currentStop.arriveRadiusM}m`}</strong>
+              </div>
+              <div className="feed-row">
+                <span>Wake lock</span>
+                <strong>{wakeStatus}</strong>
+              </div>
+              <div className="feed-row">
+                <span>Sealed files</span>
+                <strong>{selectedLoopSealedStops.length}</strong>
+              </div>
+              {playerState === "ended" && <button className="small-button" onClick={resetDemo}>Reset demo</button>}
             </div>
-          )}
+          </details>
           {playerState === "ended" && (
             <div className="panel recap-panel">
               <span className="corner-a" aria-hidden />
