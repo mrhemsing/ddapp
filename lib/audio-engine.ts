@@ -1,12 +1,22 @@
 import { fetchCachedAsset } from "@/lib/audio-cache";
 
 type ActiveSource = AudioBufferSourceNode | null;
+type ActiveNarration = {
+  source: AudioBufferSourceNode;
+  buffer: AudioBuffer;
+  startedAt: number;
+  offset: number;
+  volume: number;
+  resolve: () => void;
+  stopReason: "natural" | "pause" | "stop" | null;
+};
 
 export class DarkDrivesAudioEngine {
   private context: AudioContext | null = null;
   private narrationGain: GainNode | null = null;
   private ambientGain: GainNode | null = null;
   private ambientSource: ActiveSource = null;
+  private activeNarration: ActiveNarration | null = null;
   private activeOneShots = new Set<AudioBufferSourceNode>();
   private bufferCache = new Map<string, AudioBuffer>();
 
@@ -54,7 +64,69 @@ export class DarkDrivesAudioEngine {
   }
 
   async playNarration(url: string) {
-    return this.playOneShot(url, { volume: 0.95, duckAmbient: true });
+    const context = this.getContext();
+    const narrationGain = this.getNarrationGain();
+    const ambientGain = this.getAmbientGain();
+    const buffer = await this.getBuffer(url);
+
+    this.stopNarration();
+
+    ambientGain.gain.cancelScheduledValues(context.currentTime);
+    ambientGain.gain.setTargetAtTime(0.08, context.currentTime, 0.06);
+    narrationGain.gain.cancelScheduledValues(context.currentTime);
+    narrationGain.gain.setValueAtTime(0.0001, context.currentTime);
+    narrationGain.gain.exponentialRampToValueAtTime(0.95, context.currentTime + 0.05);
+
+    return new Promise<void>((resolve) => {
+      this.startNarrationSource({ buffer, offset: 0, volume: 0.95, resolve });
+    });
+  }
+
+  pauseNarration() {
+    if (!this.context || !this.activeNarration) {
+      return false;
+    }
+
+    const narration = this.activeNarration;
+    narration.offset = Math.min(narration.offset + (this.context.currentTime - narration.startedAt), narration.buffer.duration);
+    narration.stopReason = "pause";
+    this.narrationGain?.gain.cancelScheduledValues(this.context.currentTime);
+    this.narrationGain?.gain.setTargetAtTime(0.0001, this.context.currentTime, 0.035);
+    try {
+      narration.source.stop();
+    } catch {
+      // Source may already be stopped.
+    }
+    return true;
+  }
+
+  resumeNarration() {
+    if (!this.context || !this.activeNarration || this.activeNarration.stopReason !== "pause") {
+      return false;
+    }
+
+    const narration = this.activeNarration;
+    this.narrationGain?.gain.cancelScheduledValues(this.context.currentTime);
+    this.narrationGain?.gain.setValueAtTime(0.0001, this.context.currentTime);
+    this.narrationGain?.gain.exponentialRampToValueAtTime(narration.volume, this.context.currentTime + 0.05);
+    this.startNarrationSource(narration);
+    return true;
+  }
+
+  stopNarration() {
+    if (!this.activeNarration) {
+      return;
+    }
+
+    const narration = this.activeNarration;
+    narration.stopReason = "stop";
+    try {
+      narration.source.stop();
+    } catch {
+      // Source may already be stopped.
+    }
+    this.activeNarration = null;
+    narration.resolve();
   }
 
   async playEffect(url: string, volume = 0.38) {
@@ -95,6 +167,7 @@ export class DarkDrivesAudioEngine {
   }
 
   stopOneShots() {
+    this.stopNarration();
     for (const source of this.activeOneShots) {
       try {
         source.stop();
@@ -162,6 +235,44 @@ export class DarkDrivesAudioEngine {
     const buffer = await context.decodeAudioData(arrayBuffer.slice(0));
     this.bufferCache.set(url, buffer);
     return buffer;
+  }
+
+  private startNarrationSource(narration: Omit<ActiveNarration, "source" | "startedAt" | "stopReason"> | ActiveNarration) {
+    const context = this.getContext();
+    const narrationGain = this.getNarrationGain();
+    const source = context.createBufferSource();
+    source.buffer = narration.buffer;
+    source.connect(narrationGain);
+
+    const active: ActiveNarration = {
+      buffer: narration.buffer,
+      offset: Math.min(narration.offset, Math.max(narration.buffer.duration - 0.01, 0)),
+      volume: narration.volume,
+      resolve: narration.resolve,
+      source,
+      startedAt: context.currentTime,
+      stopReason: null
+    };
+    this.activeNarration = active;
+
+    source.onended = () => {
+      if (this.activeNarration !== active) {
+        return;
+      }
+
+      if (active.stopReason === "pause") {
+        return;
+      }
+
+      this.activeNarration = null;
+      this.narrationGain?.gain.cancelScheduledValues(context.currentTime);
+      this.narrationGain?.gain.setTargetAtTime(0.0001, context.currentTime, 0.04);
+      this.ambientGain?.gain.cancelScheduledValues(context.currentTime);
+      this.ambientGain?.gain.setTargetAtTime(0.28, context.currentTime, 0.22);
+      active.resolve();
+    };
+
+    source.start(0, active.offset);
   }
 }
 

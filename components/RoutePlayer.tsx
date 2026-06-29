@@ -8,6 +8,7 @@ import { createWakeLockHandle } from "@/lib/wake-lock";
 
 type PlayerState = "preflight" | "ready" | "traveling" | "approaching" | "armed" | "playing" | "played" | "ended";
 type LocationMode = "unknown" | "watching" | "manual" | "denied";
+type NarrationPlayback = "idle" | "playing" | "paused";
 const activeDriveStates: PlayerState[] = ["traveling", "approaching", "armed", "playing", "played"];
 const resumeStorageKey = "dark-drives:route-session";
 
@@ -76,9 +77,10 @@ function stateCopy(playerState: PlayerState) {
   return "Route closed";
 }
 
-function presenceCopy(playerState: PlayerState, distanceMeters: number | null) {
+function presenceCopy(playerState: PlayerState, distanceMeters: number | null, narrationPlayback: NarrationPlayback) {
   if (playerState === "approaching" && distanceMeters !== null) return `${distanceMeters.toLocaleString()}m`;
   if (playerState === "armed") return "It found the car";
+  if (playerState === "playing" && narrationPlayback === "paused") return "Signal held";
   if (playerState === "playing") return "Signal active";
   if (playerState === "played") return "The file is open";
   if (playerState === "traveling") return "Nothing on the glass";
@@ -193,7 +195,7 @@ export function RoutePlayer() {
   const [locationMode, setLocationMode] = useState<LocationMode>("unknown");
   const [audioStatus, setAudioStatus] = useState("Locked");
   const [wakeStatus, setWakeStatus] = useState("Not requested");
-  const [isNarrating, setIsNarrating] = useState(false);
+  const [narrationPlayback, setNarrationPlayback] = useState<NarrationPlayback>("idle");
   const [isForeground, setIsForeground] = useState(true);
   const [ritualMessage, setRitualMessage] = useState("");
   const [sessionEvents, setSessionEvents] = useState<SessionEvent[]>([]);
@@ -303,10 +305,16 @@ export function RoutePlayer() {
     if (playerState === "traveling") return { label: "Keep Driving", disabled: true, className: "" };
     if (playerState === "approaching") return { label: "Something Is Close", disabled: true, className: "approaching" };
     if (playerState === "armed") return { label: "Wake It", disabled: false, className: "ready" };
-    if (playerState === "playing") return { label: "Listen", disabled: true, className: "playing" };
-    if (playerState === "played") return { label: activeStopIndex === activeStops.length - 1 ? "Close Route" : "Next File", disabled: false, className: "" };
+    if (playerState === "playing") {
+      return {
+        label: narrationPlayback === "paused" ? "Resume" : "Pause",
+        disabled: false,
+        className: narrationPlayback === "paused" ? "paused" : "playing"
+      };
+    }
+    if (playerState === "played") return { label: "Replay", disabled: false, className: "replay" };
     return { label: "Route Closed", disabled: true, className: "" };
-  }, [activeStopIndex, activeStops.length, playerState, route]);
+  }, [narrationPlayback, playerState, route]);
 
   useEffect(() => {
     if (!route) {
@@ -506,9 +514,9 @@ export function RoutePlayer() {
       setWakeStatus(wakeLock.current.supported ? "Active" : "Unsupported");
       await audioEngine.current?.startAmbient(ambientUrl);
       audioEngine.current?.setAmbientVolume(0.2);
-      setIsNarrating(true);
+      setNarrationPlayback("playing");
       await audioEngine.current?.playNarration(route.introAudio);
-      setIsNarrating(false);
+      setNarrationPlayback("idle");
       setPlayerState("traveling");
       return;
     }
@@ -518,35 +526,56 @@ export function RoutePlayer() {
       return;
     }
 
-    if (playerState === "played") {
-      if (activeStopIndex === activeStops.length - 1) {
-        setPlayerState("playing");
-        setIsNarrating(true);
-        await audioEngine.current?.playNarration(route.outroAudio);
-        setIsNarrating(false);
-        audioEngine.current?.stopAll();
-        await wakeLock.current.release();
-        setWakeStatus("Released");
-        if (selectedLoop) {
-          setCompletedLoopIds((ids) => (ids.includes(selectedLoop.id) ? ids : [...ids, selectedLoop.id]));
+    if (playerState === "playing") {
+      if (narrationPlayback === "paused") {
+        if (audioEngine.current?.resumeNarration()) {
+          setNarrationPlayback("playing");
         }
-        setPlayerState("ended");
-      } else {
-        const nextStop = activeStops[activeStopIndex + 1];
-        const legAudio = nextStop ? loopLegByMove.get(`${currentStop.id}->${nextStop.id}`)?.audioFile : null;
-        setActiveStopIndex((index) => index + 1);
-        setDistanceMeters(null);
-        setEffectiveArriveRadius(null);
-        setApproachIntensity(0);
-        setRitualMessage("");
-        hasAutoArmedStop.current = false;
-        setPlayerState("traveling");
-        if (legAudio) {
-          setIsNarrating(true);
-          await audioEngine.current?.playNarration(legAudio);
-          setIsNarrating(false);
-        }
+      } else if (audioEngine.current?.pauseNarration()) {
+        setNarrationPlayback("paused");
       }
+      return;
+    }
+
+    if (playerState === "played") {
+      setRitualMessage("");
+      await playCurrentStopNarration();
+    }
+  }
+
+  async function advanceAfterPlayed() {
+    if (!route || !currentStop || playerState !== "played") {
+      return;
+    }
+
+    if (activeStopIndex === activeStops.length - 1) {
+      setPlayerState("playing");
+      setNarrationPlayback("playing");
+      await audioEngine.current?.playNarration(route.outroAudio);
+      setNarrationPlayback("idle");
+      audioEngine.current?.stopAll();
+      await wakeLock.current.release();
+      setWakeStatus("Released");
+      if (selectedLoop) {
+        setCompletedLoopIds((ids) => (ids.includes(selectedLoop.id) ? ids : [...ids, selectedLoop.id]));
+      }
+      setPlayerState("ended");
+      return;
+    }
+
+    const nextStop = activeStops[activeStopIndex + 1];
+    const legAudio = nextStop ? loopLegByMove.get(`${currentStop.id}->${nextStop.id}`)?.audioFile : null;
+    setActiveStopIndex((index) => index + 1);
+    setDistanceMeters(null);
+    setEffectiveArriveRadius(null);
+    setApproachIntensity(0);
+    setRitualMessage("");
+    hasAutoArmedStop.current = false;
+    setPlayerState("traveling");
+    if (legAudio) {
+      setNarrationPlayback("playing");
+      await audioEngine.current?.playNarration(legAudio);
+      setNarrationPlayback("idle");
     }
   }
 
@@ -559,12 +588,12 @@ export function RoutePlayer() {
     setPlayerState("playing");
     await audioEngine.current?.startAmbient(ambientUrl);
     audioEngine.current?.setAmbientVolume(0.44);
-    setIsNarrating(true);
+    setNarrationPlayback("playing");
     await audioEngine.current?.playNarration(currentStop.audio.narrationFile);
     if (token !== playbackToken.current) {
       return;
     }
-    setIsNarrating(false);
+    setNarrationPlayback("idle");
     setSessionEvents((events) => {
       if (events.some((event) => event.type === "stopCompleted" && event.stopId === currentStop.id)) {
         return events;
@@ -596,7 +625,7 @@ export function RoutePlayer() {
   function resetStopContext(nextIndex: number) {
     playbackToken.current += 1;
     audioEngine.current?.stopOneShots();
-    setIsNarrating(false);
+    setNarrationPlayback("idle");
     setActiveStopIndex(nextIndex);
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
@@ -773,12 +802,12 @@ export function RoutePlayer() {
     setRitualMessage(ritual.instructionText);
     const token = playbackToken.current;
     if (ritual.cueAudio) {
-      setIsNarrating(true);
+      setNarrationPlayback("playing");
       await audioEngine.current?.playNarration(ritual.cueAudio);
       if (token !== playbackToken.current) {
         return;
       }
-      setIsNarrating(false);
+      setNarrationPlayback("idle");
     }
     const payoffFired = Boolean(ritual.payoff && Math.random() <= ritual.payoff.probability);
 
@@ -954,7 +983,7 @@ export function RoutePlayer() {
             <h2 className="stop-name">{currentStop.title}</h2>
             <div className="presence" data-state={playerState}>
               <span className="presence-dot" aria-hidden />
-              <span>{presenceCopy(playerState, distanceMeters)}</span>
+              <span>{presenceCopy(playerState, distanceMeters, narrationPlayback)}</span>
             </div>
           </div>
 
@@ -971,12 +1000,20 @@ export function RoutePlayer() {
             </button>
             {!isPreDrive && (
               <>
-                <button className="secondary" onClick={() => void armManually()} disabled={!canArmManually}>
-                  I&apos;m Here
-                </button>
-                <button className="secondary" onClick={skipCurrentStop} disabled={!canSkip}>
-                  Skip
-                </button>
+                {playerState === "played" ? (
+                  <button className="secondary" onClick={() => void advanceAfterPlayed()}>
+                    {activeStopIndex === activeStops.length - 1 ? "Close Route" : "Next File"}
+                  </button>
+                ) : (
+                  <>
+                    <button className="secondary" onClick={() => void armManually()} disabled={!canArmManually}>
+                      I&apos;m Here
+                    </button>
+                    <button className="secondary" onClick={skipCurrentStop} disabled={!canSkip}>
+                      Skip
+                    </button>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -1041,8 +1078,8 @@ export function RoutePlayer() {
             </div>
           )}
 
-          {isDriveActive && isNarrating && (
-            <div className="signal-meter drive-signal" aria-label="Narration signal">
+          {isDriveActive && narrationPlayback !== "idle" && (
+            <div className="signal-meter drive-signal" data-paused={narrationPlayback === "paused"} aria-label="Narration signal">
               {Array.from({ length: 24 }, (_, index) => (
                 <span key={index} style={{ height: `${22 + ((index * 19) % 74)}%` }} />
               ))}

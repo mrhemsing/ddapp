@@ -318,6 +318,13 @@ button {
   color: var(--sick);
 }
 
+.primary.paused,
+.primary.replay {
+  border-color: rgba(230, 225, 214, 0.28);
+  background: rgba(28, 25, 22, 0.72);
+  color: var(--bone);
+}
+
 .primary.approaching {
   border-color: rgba(114, 255, 87, 0.28);
   color: var(--sick);
@@ -1080,6 +1087,11 @@ button {
 
 .signal-meter span:nth-child(3n) {
   animation-duration: 1150ms;
+}
+
+.signal-meter[data-paused="true"] span {
+  animation-play-state: paused;
+  opacity: 0.46;
 }
 
 .diagnostics {
