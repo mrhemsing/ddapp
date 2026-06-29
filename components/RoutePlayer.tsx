@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cacheRouteAudio, isRouteCached, type CacheProgress } from "@/lib/audio-cache";
 import { DarkDrivesAudioEngine } from "@/lib/audio-engine";
 import type { RoutePack, Stop } from "@/lib/route-data";
@@ -202,6 +202,7 @@ export function RoutePlayer() {
   const [selectedLoopId, setSelectedLoopId] = useState<string | null>(null);
   const [shareStatus, setShareStatus] = useState("");
   const audioEngine = useRef<DarkDrivesAudioEngine | null>(null);
+  const screenRef = useRef<HTMLElement | null>(null);
   const wakeLock = useRef(createWakeLockHandle());
   const playbackToken = useRef(0);
   const lastLocationUpdate = useRef(0);
@@ -227,10 +228,6 @@ export function RoutePlayer() {
   }, [selectedLoop]);
   const isDriveActive = activeDriveStates.includes(playerState);
   const heartbeatMs = Math.round(2200 - approachIntensity * 1500);
-  const screenStyle = {
-    "--approach-intensity": approachIntensity.toFixed(3),
-    "--heartbeat-ms": `${heartbeatMs}ms`
-  } as CSSProperties;
   const stats = recapStats(sessionEvents);
   const completedStopIds = useMemo(
     () => new Set(stats.completedStops.map((event) => event.stopId)),
@@ -243,6 +240,12 @@ export function RoutePlayer() {
     activeStopIndex < activeStops.length - 1 &&
     (playerState === "traveling" || playerState === "approaching" || playerState === "armed")
   );
+  const screenClassName = ["screen", isDriveActive ? "drive-active" : ""].filter(Boolean).join(" ");
+
+  useEffect(() => {
+    screenRef.current?.style.setProperty("--approach-intensity", approachIntensity.toFixed(3));
+    screenRef.current?.style.setProperty("--heartbeat-ms", `${heartbeatMs}ms`);
+  }, [approachIntensity, heartbeatMs]);
 
   useEffect(() => {
     let active = true;
@@ -749,7 +752,7 @@ export function RoutePlayer() {
   return (
     <main className="shell">
       <div className="phone">
-        <section className={`screen ${isDriveActive ? "drive-active" : ""}`} style={screenStyle} aria-label="Dark Drives route player">
+        <section ref={screenRef} className={screenClassName} aria-label="Dark Drives route player">
           <header className="topbar">
             <div className="brand">
               <span className="kicker">Dark Drives</span>
