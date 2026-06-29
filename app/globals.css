@@ -888,6 +888,18 @@ button {
   transition: width 180ms ease;
 }
 
+.cache-current {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.cache-error {
+  border-left: 2px solid var(--blood-hot);
+  color: var(--bone) !important;
+  padding-left: 10px;
+}
+
 .signal-meter {
   display: flex;
   height: 44px;

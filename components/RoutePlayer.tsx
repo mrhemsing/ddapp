@@ -240,6 +240,11 @@ export function RoutePlayer() {
     activeStopIndex < activeStops.length - 1 &&
     (playerState === "traveling" || playerState === "approaching" || playerState === "armed")
   );
+  const canArmManually = Boolean(
+    route &&
+    currentStop &&
+    (playerState === "traveling" || playerState === "approaching" || playerState === "armed")
+  );
   const screenClassName = ["screen", isDriveActive ? "drive-active" : ""].filter(Boolean).join(" ");
 
   useEffect(() => {
@@ -494,31 +499,7 @@ export function RoutePlayer() {
     }
 
     if (playerState === "armed") {
-      const token = playbackToken.current;
-      setPlayerState("playing");
-      await audioEngine.current?.startAmbient(ambientUrl);
-      setIsNarrating(true);
-      await audioEngine.current?.playNarration(currentStop.audio.narrationFile);
-      if (token !== playbackToken.current) {
-        return;
-      }
-      setIsNarrating(false);
-      setSessionEvents((events) => {
-        if (events.some((event) => event.type === "stopCompleted" && event.stopId === currentStop.id)) {
-          return events;
-        }
-
-        return [
-          ...events,
-          {
-            type: "stopCompleted",
-            stopId: currentStop.id,
-            stopTitle: currentStop.title,
-            timestamp: new Date().toISOString()
-          }
-        ];
-      });
-      setPlayerState("played");
+      await playCurrentStopNarration();
       return;
     }
 
@@ -551,16 +532,47 @@ export function RoutePlayer() {
     }
   }
 
-  function armManually() {
+  async function playCurrentStopNarration() {
     if (!currentStop) {
       return;
     }
 
-    void audioEngine.current?.startAmbient(ambientUrl);
+    const token = playbackToken.current;
+    setPlayerState("playing");
+    await audioEngine.current?.startAmbient(ambientUrl);
     audioEngine.current?.setAmbientVolume(0.44);
+    setIsNarrating(true);
+    await audioEngine.current?.playNarration(currentStop.audio.narrationFile);
+    if (token !== playbackToken.current) {
+      return;
+    }
+    setIsNarrating(false);
+    setSessionEvents((events) => {
+      if (events.some((event) => event.type === "stopCompleted" && event.stopId === currentStop.id)) {
+        return events;
+      }
+
+      return [
+        ...events,
+        {
+          type: "stopCompleted",
+          stopId: currentStop.id,
+          stopTitle: currentStop.title,
+          timestamp: new Date().toISOString()
+        }
+      ];
+    });
+    setPlayerState("played");
+  }
+
+  async function armManually() {
+    if (!currentStop || !canArmManually) {
+      return;
+    }
+
     setApproachIntensity(1);
     hasAutoArmedStop.current = true;
-    setPlayerState("armed");
+    await playCurrentStopNarration();
   }
 
   function resetStopContext(nextIndex: number) {
@@ -836,7 +848,7 @@ export function RoutePlayer() {
             <button className="secondary" onClick={() => window.open(mapsUrl(currentStop), "_blank", "noopener,noreferrer")}>
               Drive There
             </button>
-            <button className="secondary" onClick={armManually} disabled={playerState === "preflight" || playerState === "ready" || playerState === "playing" || playerState === "ended"}>
+            <button className="secondary" onClick={() => void armManually()} disabled={!canArmManually}>
               I&apos;m Here
             </button>
             <button className="secondary" onClick={() => setIsStopsBoardOpen((open) => !open)} disabled={playerState === "preflight"}>
@@ -923,8 +935,11 @@ export function RoutePlayer() {
               <p>
                 {cacheProgress.percent}% cached. All route audio is downloaded before the drive starts, then played from Cache API storage.
               </p>
+              {cacheProgress.currentUrl && cacheProgress.percent < 100 && (
+                <p className="cache-current">Downloading {cacheProgress.currentUrl}</p>
+              )}
               <p>Location is requested on Begin Drive so the app can arm stops while foregrounded. If it is off, every stop still works by hand.</p>
-              {cacheError && <p>{cacheError}</p>}
+              {cacheError && <p className="cache-error">{cacheError}</p>}
             </div>
           )}
 

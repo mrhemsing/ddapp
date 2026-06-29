@@ -15,9 +15,16 @@ export async function registerServiceWorker() {
     return null;
   }
 
-  const registration = await navigator.serviceWorker.register("/sw.js");
-  await navigator.serviceWorker.ready;
-  return registration;
+  try {
+    const registration = await navigator.serviceWorker.register("/sw.js");
+    await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((resolve) => window.setTimeout(resolve, 5000))
+    ]);
+    return registration;
+  } catch {
+    return null;
+  }
 }
 
 export async function isRouteCached(route: RoutePack) {
@@ -48,11 +55,30 @@ export async function cacheRouteAudio(
   onProgress({ complete, total: urls.length, percent: 0 });
 
   for (const url of urls) {
-    const response = await fetch(url, { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`Could not cache ${url}`);
+    onProgress({
+      complete,
+      total: urls.length,
+      percent: Math.round((complete / urls.length) * 100),
+      currentUrl: url
+    });
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+      if (!response.ok) {
+        throw new Error(`Could not cache ${url} (${response.status})`);
+      }
+      await cache.put(url, response.clone());
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error(`Timed out downloading ${url}`);
+      }
+      throw error instanceof Error ? error : new Error(`Could not cache ${url}`);
+    } finally {
+      window.clearTimeout(timeoutId);
     }
-    await cache.put(url, response.clone());
 
     complete += 1;
     onProgress({
