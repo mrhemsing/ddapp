@@ -768,6 +768,31 @@ export function RoutePlayer() {
     setPlayerState("ready");
   }
 
+  async function returnHome() {
+    playbackToken.current += 1;
+    audioEngine.current?.stopAll();
+    await wakeLock.current.release();
+    setWakeStatus("Released");
+    setNarrationPlayback("idle");
+    setSelectedLoopId(null);
+    setIsLoopPickerOpen(false);
+    setActiveStopIndex(0);
+    setDistanceMeters(null);
+    setEffectiveArriveRadius(null);
+    setApproachIntensity(0);
+    setCurrentPosition(null);
+    setLocationMode("unknown");
+    setRitualMessage("");
+    setSkippedStopIds([]);
+    setSessionEvents([]);
+    setShareStatus("");
+    setResumeState(null);
+    setIsStopsBoardOpen(false);
+    lastPositionFix.current = null;
+    hasAutoArmedStop.current = false;
+    setPlayerState("preflight");
+  }
+
   function skipCurrentStop() {
     if (!route || !currentStop || activeStopIndex >= activeStops.length - 1) {
       return;
@@ -914,13 +939,12 @@ export function RoutePlayer() {
       <div className="phone">
         <section ref={screenRef} className={screenClassName} aria-label="Dark Drives route player">
           <header className="topbar">
-            <div className="brand">
-              <span className="kicker">Dark Drives</span>
+            <button className="brand" type="button" onClick={() => void returnHome()} aria-label="Return to Choose Night">
               <div className="wordmark" aria-label="Dark Drives">
                 Dark Drives<sup>TM</sup>
               </div>
               <h1 className="title">{route?.title ?? "Loading route"}</h1>
-            </div>
+            </button>
             <span className="status-pill">{statusLabel}</span>
           </header>
 

@@ -137,6 +137,20 @@ button {
 .brand {
   display: grid;
   gap: 3px;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.brand:focus-visible {
+  outline: 1px solid rgba(114, 255, 87, 0.72);
+  outline-offset: 5px;
 }
 
 .wordmark {
