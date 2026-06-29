@@ -21,6 +21,7 @@ type ResumeState = {
   activeStopIndex: number;
   skippedStopIds: string[];
   sessionEvents: SessionEvent[];
+  completedLoopIds?: string[];
   savedAt: string;
 };
 
@@ -197,6 +198,7 @@ export function RoutePlayer() {
   const [ritualMessage, setRitualMessage] = useState("");
   const [sessionEvents, setSessionEvents] = useState<SessionEvent[]>([]);
   const [skippedStopIds, setSkippedStopIds] = useState<string[]>([]);
+  const [completedLoopIds, setCompletedLoopIds] = useState<string[]>([]);
   const [isStopsBoardOpen, setIsStopsBoardOpen] = useState(false);
   const [resumeState, setResumeState] = useState<ResumeState | null>(null);
   const [selectedLoopId, setSelectedLoopId] = useState<string | null>(null);
@@ -251,6 +253,13 @@ export function RoutePlayer() {
   const selectedLoopLiveCount = activeStops.length;
   const selectedLoopHeldCount = selectedLoopSealedStops.length;
   const selectedLoopFinale = activeStops.at(-1)?.title ?? currentStop?.title ?? "Final stop";
+  const authoredLoops = useMemo(
+    () => route?.loops?.filter((loop) => loop.id !== "complete-the-city") ?? [],
+    [route]
+  );
+  const completedLoopIdSet = useMemo(() => new Set(completedLoopIds), [completedLoopIds]);
+  const nextUnfinishedLoop = authoredLoops.find((loop) => !completedLoopIdSet.has(loop.id));
+  const loopsLeftTonight = authoredLoops.filter((loop) => !completedLoopIdSet.has(loop.id)).length;
 
   useEffect(() => {
     screenRef.current?.style.setProperty("--approach-intensity", approachIntensity.toFixed(3));
@@ -349,10 +358,11 @@ export function RoutePlayer() {
       activeStopIndex,
       skippedStopIds,
       sessionEvents,
+      completedLoopIds,
       savedAt: new Date().toISOString()
     };
     window.localStorage.setItem(resumeStorageKey, JSON.stringify(state));
-  }, [activeStopIndex, playerState, route, selectedLoop, sessionEvents, skippedStopIds]);
+  }, [activeStopIndex, completedLoopIds, playerState, route, selectedLoop, sessionEvents, skippedStopIds]);
 
   useEffect(() => {
     const handleVisibility = () => setIsForeground(document.visibilityState === "visible");
@@ -517,6 +527,9 @@ export function RoutePlayer() {
         audioEngine.current?.stopAll();
         await wakeLock.current.release();
         setWakeStatus("Released");
+        if (selectedLoop) {
+          setCompletedLoopIds((ids) => (ids.includes(selectedLoop.id) ? ids : [...ids, selectedLoop.id]));
+        }
         setPlayerState("ended");
       } else {
         const nextStop = activeStops[activeStopIndex + 1];
@@ -628,6 +641,69 @@ export function RoutePlayer() {
     }
   }
 
+  function switchLoopMidDrive(loopId: string) {
+    if (!route || loopId === selectedLoop?.id) {
+      return;
+    }
+
+    const nextLoop = route.loops?.find((loop) => loop.id === loopId);
+    if (!nextLoop) {
+      return;
+    }
+
+    const confirmed = window.confirm(`Leave ${selectedLoop?.title ?? "this loop"} and start ${nextLoop.title}? Current loop progress will be cleared.`);
+    if (!confirmed) {
+      return;
+    }
+
+    playbackToken.current += 1;
+    audioEngine.current?.stopOneShots();
+    setSelectedLoopId(loopId);
+    setActiveStopIndex(0);
+    setDistanceMeters(null);
+    setEffectiveArriveRadius(null);
+    setApproachIntensity(0);
+    setCurrentPosition(null);
+    setRitualMessage("");
+    setSkippedStopIds([]);
+    setSessionEvents([]);
+    setShareStatus("");
+    setResumeState(null);
+    setIsStopsBoardOpen(false);
+    lastPositionFix.current = null;
+    hasAutoArmedStop.current = false;
+    setPlayerState("traveling");
+    const nextStop = nextLoop.stopIds.map((id) => stopById.get(id)).find((stop): stop is Stop => Boolean(stop));
+    void audioEngine.current?.startAmbient(nextStop?.audio.ambientFile ?? ambientUrl);
+    audioEngine.current?.setAmbientVolume(0.2);
+  }
+
+  function startAnotherLoop() {
+    if (!nextUnfinishedLoop) {
+      return;
+    }
+
+    playbackToken.current += 1;
+    audioEngine.current?.stopOneShots();
+    setSelectedLoopId(nextUnfinishedLoop.id);
+    setIsLoopPickerOpen(false);
+    setActiveStopIndex(0);
+    setDistanceMeters(null);
+    setEffectiveArriveRadius(null);
+    setApproachIntensity(0);
+    setCurrentPosition(null);
+    setRitualMessage("");
+    setSkippedStopIds([]);
+    setSessionEvents([]);
+    setShareStatus("");
+    setResumeState(null);
+    setIsStopsBoardOpen(false);
+    lastPositionFix.current = null;
+    hasAutoArmedStop.current = false;
+    window.localStorage.removeItem(resumeStorageKey);
+    setPlayerState("ready");
+  }
+
   function skipCurrentStop() {
     if (!route || !currentStop || activeStopIndex >= activeStops.length - 1) {
       return;
@@ -667,6 +743,7 @@ export function RoutePlayer() {
 
     setSkippedStopIds(resumeState.skippedStopIds);
     setSessionEvents(resumeState.sessionEvents);
+    setCompletedLoopIds(resumeState.completedLoopIds ?? []);
     resetStopContext(resumeState.activeStopIndex);
   }
 
@@ -681,6 +758,7 @@ export function RoutePlayer() {
     setRitualMessage("");
     setSessionEvents([]);
     setSkippedStopIds([]);
+    setCompletedLoopIds([]);
     setResumeState(null);
     setShareStatus("");
     window.localStorage.removeItem(resumeStorageKey);
@@ -834,12 +912,13 @@ export function RoutePlayer() {
                     const liveCount = loop.stopIds.filter((id) => stopById.has(id)).length;
                     const heldCount = loop.stopIds.length - liveCount;
                     const selected = loop.id === selectedLoop?.id;
+                    const completed = completedLoopIdSet.has(loop.id);
 
                     return (
                       <button className="loop-button" data-selected={selected} key={loop.id} onClick={() => selectLoop(loop.id)}>
                         <strong>{loop.title}</strong>
                         <span>{loop.subtitle}</span>
-                        <em>{liveCount} live{heldCount > 0 ? ` / ${heldCount} sealed` : ""}</em>
+                        <em>{completed ? "completed · " : ""}{liveCount} live{heldCount > 0 ? ` / ${heldCount} sealed` : ""}</em>
                       </button>
                     );
                   })}
@@ -933,6 +1012,20 @@ export function RoutePlayer() {
                   </div>
                 ))}
               </div>
+              {!isPreDrive && route.loops && route.loops.length > 1 && (
+                <details className="loop-switcher">
+                  <summary>Change loop</summary>
+                  <div className="loop-switch-list">
+                    {route.loops.filter((loop) => loop.id !== selectedLoop?.id).map((loop) => (
+                      <button className="stop-row loop-switch-row" key={loop.id} onClick={() => switchLoopMidDrive(loop.id)}>
+                        <span>{completedLoopIdSet.has(loop.id) ? "DONE" : "LOOP"}</span>
+                        <strong>{loop.title}</strong>
+                        <em>start over</em>
+                      </button>
+                    ))}
+                  </div>
+                </details>
+              )}
             </div>
           )}
 
@@ -1066,6 +1159,16 @@ export function RoutePlayer() {
                 </p>
               )}
               <button className="small-button" onClick={() => void shareRecap()}>Share recap</button>
+              {nextUnfinishedLoop && (
+                <div className="next-loop-panel">
+                  <p>
+                    {loopsLeftTonight} loop{loopsLeftTonight === 1 ? "" : "s"} left tonight.
+                  </p>
+                  <button className="small-button" onClick={startAnotherLoop}>
+                    Start {nextUnfinishedLoop.title}
+                  </button>
+                </div>
+              )}
               {shareStatus && <p>{shareStatus}</p>}
             </div>
           )}

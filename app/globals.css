@@ -511,7 +511,8 @@ button {
 .map-drawer,
 .sealed-disclosure,
 .sealed-stop-detail,
-.diagnostics {
+.diagnostics,
+.loop-switcher {
   display: grid;
   gap: 10px;
 }
@@ -520,7 +521,8 @@ button {
 .map-drawer summary,
 .sealed-disclosure summary,
 .sealed-stop-detail summary,
-.diagnostics summary {
+.diagnostics summary,
+.loop-switcher summary {
   min-height: 44px;
   cursor: pointer;
   color: var(--bone-dim);
@@ -537,7 +539,8 @@ button {
 .map-drawer summary::-webkit-details-marker,
 .sealed-disclosure summary::-webkit-details-marker,
 .sealed-stop-detail summary::-webkit-details-marker,
-.diagnostics summary::-webkit-details-marker {
+.diagnostics summary::-webkit-details-marker,
+.loop-switcher summary::-webkit-details-marker {
   display: none;
 }
 
@@ -545,7 +548,8 @@ button {
 .map-drawer summary::before,
 .sealed-disclosure summary::before,
 .sealed-stop-detail summary::before,
-.diagnostics summary::before {
+.diagnostics summary::before,
+.loop-switcher summary::before {
   content: "+ ";
   color: var(--blood-hot);
 }
@@ -554,7 +558,8 @@ button {
 .map-drawer[open] summary::before,
 .sealed-disclosure[open] > summary::before,
 .sealed-stop-detail[open] > summary::before,
-.diagnostics[open] summary::before {
+.diagnostics[open] summary::before,
+.loop-switcher[open] summary::before {
   content: "- ";
 }
 
@@ -802,6 +807,21 @@ button {
   opacity: 0.62;
 }
 
+.loop-switcher {
+  border-top: 1px solid rgba(230, 225, 214, 0.08);
+  margin-top: 4px;
+  padding-top: 6px;
+}
+
+.loop-switch-list {
+  display: grid;
+  gap: 8px;
+}
+
+.loop-switch-row span {
+  color: var(--blood-hot);
+}
+
 .recap-panel {
   border-color: rgba(159, 0, 11, 0.62);
   background:
@@ -837,6 +857,13 @@ button {
   font-family: var(--font-display);
   font-size: 28px;
   line-height: 1;
+}
+
+.next-loop-panel {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid rgba(230, 225, 214, 0.08);
+  padding-top: 12px;
 }
 
 .field {
