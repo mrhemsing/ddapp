@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { existsSync, statSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { fakeRoute, getRouteAssetUrls } from "@/lib/route-data";
+import { fakeRoute, getRouteAssetUrls, type RoutePack } from "@/lib/route-data";
 import { saskatoonAll40AudioPath, saskatoonAll40Stops } from "@/lib/saskatoon-all-40-scripts";
 import { ritualAssetsForStop } from "@/lib/saskatoon-ritual-assets";
 
@@ -40,17 +41,31 @@ function publicAssetExists(url: string) {
   return existsSync(publicPathForUrl(url));
 }
 
-export default function DevAudioReviewPage() {
+async function loadReviewRoutePack(): Promise<RoutePack> {
+  const privatePackPath = path.join(process.cwd(), "private", "dark-drives-route-pack.json");
+
+  if (!existsSync(privatePackPath)) {
+    return fakeRoute;
+  }
+
+  return JSON.parse(await readFile(privatePackPath, "utf8")) as RoutePack;
+}
+
+export default async function DevAudioReviewPage() {
   if (!enabledInThisEnvironment()) {
     notFound();
   }
 
-  const route = fakeRoute;
+  const route = await loadReviewRoutePack();
   const cachedAssets = getRouteAssetUrls(route);
   const introDraft = generatedAudioUrl("intro");
   const outroDraft = generatedAudioUrl("outro");
   const showIntroDraft = introDraft && introDraft !== route.introAudio;
   const showOutroDraft = outroDraft && outroDraft !== route.outroAudio;
+  const stopTitleById = new Map([
+    ...route.stops.map((stop) => [stop.id, stop.title] as const),
+    ...(route.sealedStops ?? []).map((stop) => [stop.id, stop.title] as const)
+  ]);
 
   return (
     <main className="dev-audio-page">
@@ -102,6 +117,52 @@ export default function DevAudioReviewPage() {
           ) : null}
         </article>
       </section>
+
+      {route.loops?.some((loop) => (loop.legs ?? []).length > 0) && (
+        <section className="dev-audio-list" aria-label="Drive leg audio review">
+          {route.loops.map((loop) => {
+            const legs = loop.legs ?? [];
+
+            if (legs.length === 0) {
+              return null;
+            }
+
+            return (
+              <article className="dev-audio-card" key={loop.id}>
+                <div className="file-row">
+                  <span className="file-tab">DRIVE LEGS</span>
+                  <span className="sealed">{legs.length} ASSETS</span>
+                </div>
+                <div className="dev-audio-card-header">
+                  <div>
+                    <h2>{loop.title}</h2>
+                    <p>{loop.subtitle}</p>
+                  </div>
+                  <span className="dev-audio-meta">{loop.estimatedDuration}</span>
+                </div>
+
+                {legs.map((leg, index) => {
+                  const hasAudio = publicAssetExists(leg.audioFile);
+
+                  return (
+                    <div className="dev-audio-player" key={`${loop.id}-${leg.fromStopId}-${leg.toStopId}`}>
+                      <span>
+                        Leg {String(index + 1).padStart(2, "0")}: {stopTitleById.get(leg.fromStopId) ?? leg.fromStopId} to{" "}
+                        {stopTitleById.get(leg.toStopId) ?? leg.toStopId}
+                      </span>
+                      {hasAudio ? (
+                        <audio controls preload="metadata" src={cacheBustedAudioUrl(leg.audioFile)} />
+                      ) : (
+                        <p className="dev-audio-missing">Missing drive leg: {filenameFromUrl(leg.audioFile)}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </article>
+            );
+          })}
+        </section>
+      )}
 
       <section className="dev-audio-list" aria-label="Stop audio review">
         {saskatoonAll40Stops.map((stop) => {
