@@ -7,6 +7,7 @@ import { ritualAssetsForStop } from "../lib/saskatoon-ritual-assets.ts";
 
 const defaultConfigPath = path.join(process.cwd(), "private", "dark-drives-stop-config.json");
 const configPath = process.argv[2] ? path.resolve(process.argv[2]) : defaultConfigPath;
+const driveLegsPath = path.join(process.cwd(), "private", "dark-drives-drive-legs.json");
 const outputDir = path.join(process.cwd(), "private");
 const packPath = path.join(outputDir, "dark-drives-route-pack.json");
 const b64Path = path.join(outputDir, "dark-drives-route-pack.b64");
@@ -238,6 +239,12 @@ function assetManifest(route) {
     }
   }
 
+  for (const loop of route.loops ?? []) {
+    for (const leg of loop.legs ?? []) {
+      urls.add(leg.audioFile);
+    }
+  }
+
   return [...urls].sort();
 }
 
@@ -246,6 +253,7 @@ function configForScriptId(scriptId) {
 }
 
 let configRaw;
+let driveLegsRaw = null;
 
 try {
   configRaw = JSON.parse(await readFile(configPath, "utf8"));
@@ -259,6 +267,22 @@ try {
 
 const configs = asStopsConfig(configRaw);
 const configById = new Map(configs.map((config) => [config.id, config]));
+try {
+  driveLegsRaw = JSON.parse(await readFile(driveLegsPath, "utf8"));
+} catch (error) {
+  if (error?.code !== "ENOENT") throw error;
+}
+
+const driveLegsByLoop = new Map(
+  (driveLegsRaw?.loops ?? []).map((loop) => [
+    loop.id,
+    (loop.legs ?? []).map((leg) => ({
+      fromStopId: leg.fromStopId,
+      toStopId: leg.toStopId,
+      audioFile: leg.audioFile
+    }))
+  ])
+);
 const stops = [];
 const sealedStops = [];
 
@@ -327,7 +351,10 @@ const routePack = {
   outroScript: fakeRoute.outroScript,
   stops,
   sealedStops,
-  loops: routeLoops
+  loops: routeLoops.map((loop) => ({
+    ...loop,
+    ...(driveLegsByLoop.has(loop.id) ? { legs: driveLegsByLoop.get(loop.id) } : {})
+  }))
 };
 
 const json = JSON.stringify(routePack, null, 2);
@@ -341,3 +368,4 @@ console.log(`Wrote ${b64Path}`);
 console.log(`Wrote ${manifestPath}`);
 console.log(`Drivable stops: ${stops.length}`);
 console.log(`Sealed/held entries: ${sealedStops.length}`);
+console.log(`Loop drive legs: ${[...driveLegsByLoop.values()].reduce((count, legs) => count + legs.length, 0)}`);

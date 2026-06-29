@@ -54,12 +54,20 @@ export type SealedStop = {
   safetyNote?: string;
 };
 
+export type RouteLeg = {
+  fromStopId: string;
+  toStopId: string;
+  audioFile: string;
+  script?: string;
+};
+
 export type RouteLoop = {
   id: string;
   title: string;
   subtitle: string;
   estimatedDuration: string;
   stopIds: string[];
+  legs?: RouteLeg[];
 };
 
 export type RoutePack = {
@@ -248,6 +256,12 @@ export function getRouteAssetUrls(route: RoutePack): string[] {
       if (ritual.payoff?.audioFile) {
         urls.add(ritual.payoff.audioFile);
       }
+    }
+  }
+
+  for (const loop of route.loops ?? []) {
+    for (const leg of loop.legs ?? []) {
+      urls.add(leg.audioFile);
     }
   }
 

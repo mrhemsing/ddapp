@@ -221,6 +221,10 @@ export function RoutePlayer() {
   }, [route, selectedLoop]);
   const currentStop = activeStops[activeStopIndex] ?? null;
   const ambientUrl = currentStop?.audio.ambientFile ?? "/audio/ambient-low.wav";
+  const loopLegByMove = useMemo(() => {
+    const legs = selectedLoop?.legs ?? [];
+    return new Map(legs.map((leg) => [`${leg.fromStopId}->${leg.toStopId}`, leg]));
+  }, [selectedLoop]);
   const isDriveActive = activeDriveStates.includes(playerState);
   const heartbeatMs = Math.round(2200 - approachIntensity * 1500);
   const screenStyle = {
@@ -526,7 +530,8 @@ export function RoutePlayer() {
         setWakeStatus("Released");
         setPlayerState("ended");
       } else {
-        const legAudio = currentStop.driveToNextAudio;
+        const nextStop = activeStops[activeStopIndex + 1];
+        const legAudio = nextStop ? loopLegByMove.get(`${currentStop.id}->${nextStop.id}`)?.audioFile : null;
         setActiveStopIndex((index) => index + 1);
         setDistanceMeters(null);
         setEffectiveArriveRadius(null);
