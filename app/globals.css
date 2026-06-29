@@ -269,6 +269,100 @@ button {
   box-shadow: 0 0 18px rgba(114, 255, 87, 0.44);
 }
 
+.welcome-screen {
+  display: grid;
+  gap: 18px;
+  padding-block: 8px 18px;
+}
+
+.welcome-intro {
+  display: grid;
+  gap: 12px;
+  padding-block: 18px 8px;
+}
+
+.welcome-intro.compact {
+  padding-block: 10px 0;
+}
+
+.welcome-intro h2 {
+  margin: 0;
+  color: var(--bone);
+  font-family: var(--font-display);
+  font-size: clamp(32px, 9vw, 48px);
+  line-height: 1.02;
+  text-transform: uppercase;
+}
+
+.welcome-intro.compact h2 {
+  font-size: clamp(28px, 8vw, 42px);
+}
+
+.welcome-intro p {
+  max-width: 34ch;
+  margin: 0;
+  color: var(--bone-dim);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.welcome-loop-list {
+  display: grid;
+  gap: 10px;
+}
+
+.welcome-loop-card {
+  display: grid;
+  gap: 6px;
+  min-height: 96px;
+  border: 1px solid rgba(230, 225, 214, 0.12);
+  border-radius: 2px;
+  background:
+    linear-gradient(90deg, rgba(159, 0, 11, 0.18), transparent 54%),
+    rgba(10, 9, 8, 0.68);
+  color: var(--bone);
+  cursor: pointer;
+  padding: 14px;
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.welcome-loop-card:first-child {
+  border-color: rgba(114, 255, 87, 0.34);
+  box-shadow: inset 0 0 18px rgba(114, 255, 87, 0.08);
+}
+
+.welcome-loop-card:active {
+  transform: scale(0.99);
+}
+
+.welcome-loop-card strong {
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.welcome-loop-card span {
+  color: var(--bone-dim);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.welcome-loop-card em {
+  color: var(--sick);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
 .primary {
   width: 100%;
   min-height: 96px;

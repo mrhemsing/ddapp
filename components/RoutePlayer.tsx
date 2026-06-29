@@ -11,6 +11,7 @@ type LocationMode = "unknown" | "watching" | "manual" | "denied";
 type NarrationPlayback = "idle" | "playing" | "paused";
 const activeDriveStates: PlayerState[] = ["traveling", "approaching", "armed", "playing", "played"];
 const resumeStorageKey = "dark-drives:route-session";
+const welcomeSeenStorageKey = "dark-drives:welcome-seen";
 
 type SessionEvent =
   | { type: "stopCompleted"; stopId: string; stopTitle: string; timestamp: string }
@@ -203,8 +204,10 @@ export function RoutePlayer() {
   const [completedLoopIds, setCompletedLoopIds] = useState<string[]>([]);
   const [isStopsBoardOpen, setIsStopsBoardOpen] = useState(false);
   const [resumeState, setResumeState] = useState<ResumeState | null>(null);
+  const [hasCheckedResume, setHasCheckedResume] = useState(false);
   const [selectedLoopId, setSelectedLoopId] = useState<string | null>(null);
   const [isLoopPickerOpen, setIsLoopPickerOpen] = useState(false);
+  const [hasSeenWelcome, setHasSeenWelcome] = useState(false);
   const [shareStatus, setShareStatus] = useState("");
   const audioEngine = useRef<DarkDrivesAudioEngine | null>(null);
   const screenRef = useRef<HTMLElement | null>(null);
@@ -213,13 +216,16 @@ export function RoutePlayer() {
   const lastLocationUpdate = useRef(0);
   const lastPositionFix = useRef<PositionFix | null>(null);
   const hasAutoArmedStop = useRef(false);
-  const selectedLoop = route?.loops?.find((loop) => loop.id === selectedLoopId) ?? route?.loops?.[0] ?? null;
+  const routeHasLoops = Boolean(route?.loops?.length);
+  const selectedLoop = selectedLoopId ? route?.loops?.find((loop) => loop.id === selectedLoopId) ?? null : null;
   const stopById = useMemo(() => new Map(route?.stops.map((stop) => [stop.id, stop]) ?? []), [route]);
+  const sealedStopById = useMemo(() => new Map(route?.sealedStops?.map((stop) => [stop.id, stop]) ?? []), [route]);
   const activeStops = useMemo(() => {
     if (!route) return [];
+    if (routeHasLoops && !selectedLoop) return [];
     if (!selectedLoop) return route.stops;
     return selectedLoop.stopIds.map((id) => stopById.get(id)).filter((stop): stop is Stop => Boolean(stop));
-  }, [route, selectedLoop, stopById]);
+  }, [route, routeHasLoops, selectedLoop, stopById]);
   const selectedLoopSealedStops = useMemo(() => {
     if (!selectedLoop) return route?.sealedStops ?? [];
     const ids = new Set(selectedLoop.stopIds);
@@ -233,6 +239,7 @@ export function RoutePlayer() {
   }, [selectedLoop]);
   const isDriveActive = activeDriveStates.includes(playerState);
   const isPreDrive = playerState === "preflight" || playerState === "ready";
+  const isChoosingLoop = Boolean(route && hasCheckedResume && routeHasLoops && !selectedLoop && isPreDrive && !resumeState);
   const heartbeatMs = Math.round(2200 - approachIntensity * 1500);
   const stats = recapStats(sessionEvents);
   const completedStopIds = useMemo(
@@ -259,14 +266,38 @@ export function RoutePlayer() {
     () => route?.loops?.filter((loop) => loop.id !== "complete-the-city") ?? [],
     [route]
   );
+  const welcomeLoops = useMemo(() => {
+    const loops = route?.loops ?? [];
+    const campus = loops.find((loop) => loop.id === "campus-after-dark");
+    const others = loops.filter((loop) => loop.id !== "campus-after-dark");
+    return campus ? [campus, ...others] : loops;
+  }, [route]);
   const completedLoopIdSet = useMemo(() => new Set(completedLoopIds), [completedLoopIds]);
   const nextUnfinishedLoop = authoredLoops.find((loop) => !completedLoopIdSet.has(loop.id));
   const loopsLeftTonight = authoredLoops.filter((loop) => !completedLoopIdSet.has(loop.id)).length;
+  const statusLabel = !route
+    ? routeError ? "Locked" : "Loading"
+    : resumeState && isPreDrive ? "Resume"
+      : !hasCheckedResume && isPreDrive ? "Checking"
+        : isChoosingLoop ? "Choose Night"
+          : stateCopy(playerState);
+
+  function loopFinaleTitle(loop: NonNullable<RoutePack["loops"]>[number]) {
+    const finaleId = loop.stopIds.at(-1);
+    if (!finaleId) {
+      return "final file";
+    }
+    return stopById.get(finaleId)?.title ?? sealedStopById.get(finaleId)?.title ?? "final file";
+  }
 
   useEffect(() => {
     screenRef.current?.style.setProperty("--approach-intensity", approachIntensity.toFixed(3));
     screenRef.current?.style.setProperty("--heartbeat-ms", `${heartbeatMs}ms`);
   }, [approachIntensity, heartbeatMs]);
+
+  useEffect(() => {
+    setHasSeenWelcome(window.localStorage.getItem(welcomeSeenStorageKey) === "true");
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -334,6 +365,8 @@ export function RoutePlayer() {
       }
     } catch {
       window.localStorage.removeItem(resumeStorageKey);
+    } finally {
+      setHasCheckedResume(true);
     }
 
     audioEngine.current = new DarkDrivesAudioEngine();
@@ -649,6 +682,8 @@ export function RoutePlayer() {
 
     playbackToken.current += 1;
     audioEngine.current?.stopOneShots();
+    window.localStorage.setItem(welcomeSeenStorageKey, "true");
+    setHasSeenWelcome(true);
     setSelectedLoopId(loopId);
     setIsLoopPickerOpen(false);
     setActiveStopIndex(0);
@@ -886,10 +921,10 @@ export function RoutePlayer() {
               </div>
               <h1 className="title">{route?.title ?? "Loading route"}</h1>
             </div>
-            <span className="status-pill">{stateCopy(playerState)}</span>
+            <span className="status-pill">{statusLabel}</span>
           </header>
 
-          {!route || !currentStop ? (
+          {!route ? (
             <div className="panel">
               <span className="corner-a" aria-hidden />
               <span className="corner-b" aria-hidden />
@@ -900,9 +935,7 @@ export function RoutePlayer() {
               <h2>{routeError || "Loading your city pack"}</h2>
               <p>The player only loads full route data after the server verifies access.</p>
             </div>
-          ) : (
-            <>
-          {resumeState && (playerState === "preflight" || playerState === "ready") && (
+          ) : resumeState && isPreDrive ? (
             <div className="panel resume-panel">
               <span className="corner-a" aria-hidden />
               <span className="corner-b" aria-hidden />
@@ -914,8 +947,55 @@ export function RoutePlayer() {
               <p>Saved at {localTime(resumeState.savedAt)}. Route access is still checked by the server.</p>
               <button className="small-button" onClick={resumeDrive}>Resume</button>
             </div>
-          )}
-
+          ) : !hasCheckedResume && isPreDrive ? (
+            <div className="panel">
+              <span className="corner-a" aria-hidden />
+              <span className="corner-b" aria-hidden />
+              <div className="file-row">
+                <span className="file-tab">SESSION CHECK</span>
+                <span className="sealed">WAIT</span>
+              </div>
+              <h2>Checking the car</h2>
+              <p>Looking for an unfinished drive before opening a new night.</p>
+            </div>
+          ) : isChoosingLoop ? (
+            <div className="welcome-screen" aria-label="Choose your night">
+              {!hasSeenWelcome && (
+                <div className="welcome-intro">
+                  <span className="stop-count">Choose your night</span>
+                  <h2>Dark Drives is a haunted route you run from the car after dark.</h2>
+                  <p>One person drives with their own maps. One person holds this phone and becomes the host.</p>
+                </div>
+              )}
+              {hasSeenWelcome && (
+                <div className="welcome-intro compact">
+                  <span className="stop-count">Choose your night</span>
+                  <h2>Pick the loop for tonight.</h2>
+                </div>
+              )}
+              <div className="welcome-loop-list">
+                {welcomeLoops.map((loop) => (
+                  <button className="welcome-loop-card" key={loop.id} onClick={() => selectLoop(loop.id)}>
+                    <strong>{loop.title}</strong>
+                    <span>{loop.subtitle}</span>
+                    <em>{loop.estimatedDuration} / finale: {loopFinaleTitle(loop)}</em>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : !currentStop ? (
+            <div className="panel">
+              <span className="corner-a" aria-hidden />
+              <span className="corner-b" aria-hidden />
+              <div className="file-row">
+                <span className="file-tab">ROUTE LOOP</span>
+                <span className="sealed">EMPTY</span>
+              </div>
+              <h2>Loop unavailable</h2>
+              <p>Choose a different night from the route loop screen.</p>
+            </div>
+          ) : (
+            <>
           {route.loops && route.loops.length > 0 && isPreDrive && (
             <div className="panel loop-panel">
               <span className="corner-a" aria-hidden />
