@@ -92,6 +92,18 @@ function localTime(timestamp: string) {
   return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(timestamp));
 }
 
+function loopHref(loopId: string) {
+  return `/?loop=${encodeURIComponent(loopId)}`;
+}
+
+function loopIdFromLocation(route: RoutePack) {
+  const loopId = new URL(window.location.href).searchParams.get("loop");
+  if (!loopId || !route.loops?.some((loop) => loop.id === loopId)) {
+    return null;
+  }
+  return loopId;
+}
+
 function recapStats(events: SessionEvent[]) {
   const completedById = new Map<string, Extract<SessionEvent, { type: "stopCompleted" }>>();
   for (const event of events) {
@@ -352,21 +364,30 @@ export function RoutePlayer() {
       return;
     }
 
-    try {
-      const stored = window.localStorage.getItem(resumeStorageKey);
-      if (stored) {
-        const parsed = JSON.parse(stored) as ResumeState;
-        if (parsed.routeId === route.id && (!parsed.loopId || route.loops?.some((loop) => loop.id === parsed.loopId))) {
-          if (parsed.loopId) {
-            setSelectedLoopId(parsed.loopId);
-          }
-          setResumeState(parsed);
-        }
-      }
-    } catch {
-      window.localStorage.removeItem(resumeStorageKey);
-    } finally {
+    const urlLoopId = loopIdFromLocation(route);
+    if (urlLoopId) {
+      window.localStorage.setItem(welcomeSeenStorageKey, "true");
+      setHasSeenWelcome(true);
+      setSelectedLoopId(urlLoopId);
+      setResumeState(null);
       setHasCheckedResume(true);
+    } else {
+      try {
+        const stored = window.localStorage.getItem(resumeStorageKey);
+        if (stored) {
+          const parsed = JSON.parse(stored) as ResumeState;
+          if (parsed.routeId === route.id && (!parsed.loopId || route.loops?.some((loop) => loop.id === parsed.loopId))) {
+            if (parsed.loopId) {
+              setSelectedLoopId(parsed.loopId);
+            }
+            setResumeState(parsed);
+          }
+        }
+      } catch {
+        window.localStorage.removeItem(resumeStorageKey);
+      } finally {
+        setHasCheckedResume(true);
+      }
     }
 
     audioEngine.current = new DarkDrivesAudioEngine();
@@ -378,6 +399,24 @@ export function RoutePlayer() {
       }
     });
   }, [route]);
+
+  useEffect(() => {
+    if (!route) {
+      return;
+    }
+
+    const handlePopState = () => {
+      const loopId = loopIdFromLocation(route);
+      if (loopId) {
+        selectLoop(loopId, { updateUrl: false });
+      } else {
+        void returnHome({ updateUrl: false });
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [route, selectedLoop?.id]);
 
   useEffect(() => {
     if (!route) {
@@ -675,11 +714,36 @@ export function RoutePlayer() {
     audioEngine.current?.setAmbientVolume(0.2);
   }
 
-  function selectLoop(loopId: string) {
+  function updateLoopUrl(loopId: string | null, mode: "push" | "replace" = "push") {
+    const url = new URL(window.location.href);
+    if (loopId) {
+      url.searchParams.set("loop", loopId);
+    } else {
+      url.searchParams.delete("loop");
+    }
+
+    const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (nextUrl === currentUrl) {
+      return;
+    }
+
+    const state = loopId ? { loopId } : { home: true };
+    if (mode === "replace") {
+      window.history.replaceState(state, "", nextUrl);
+    } else {
+      window.history.pushState(state, "", nextUrl);
+    }
+  }
+
+  function selectLoop(loopId: string, options: { updateUrl?: boolean } = {}) {
     if (loopId === selectedLoop?.id) {
       return;
     }
 
+    if (options.updateUrl !== false) {
+      updateLoopUrl(loopId);
+    }
     playbackToken.current += 1;
     audioEngine.current?.stopOneShots();
     window.localStorage.setItem(welcomeSeenStorageKey, "true");
@@ -720,6 +784,7 @@ export function RoutePlayer() {
       return;
     }
 
+    updateLoopUrl(loopId);
     playbackToken.current += 1;
     audioEngine.current?.stopOneShots();
     setSelectedLoopId(loopId);
@@ -749,6 +814,7 @@ export function RoutePlayer() {
 
     playbackToken.current += 1;
     audioEngine.current?.stopOneShots();
+    updateLoopUrl(nextUnfinishedLoop.id);
     setSelectedLoopId(nextUnfinishedLoop.id);
     setIsLoopPickerOpen(false);
     setActiveStopIndex(0);
@@ -768,7 +834,10 @@ export function RoutePlayer() {
     setPlayerState("ready");
   }
 
-  async function returnHome() {
+  async function returnHome(options: { updateUrl?: boolean } = {}) {
+    if (options.updateUrl !== false) {
+      updateLoopUrl(null);
+    }
     playbackToken.current += 1;
     audioEngine.current?.stopAll();
     await wakeLock.current.release();
@@ -999,11 +1068,19 @@ export function RoutePlayer() {
               )}
               <div className="welcome-loop-list">
                 {welcomeLoops.map((loop) => (
-                  <button className="welcome-loop-card" key={loop.id} onClick={() => selectLoop(loop.id)}>
+                  <a
+                    className="welcome-loop-card"
+                    href={loopHref(loop.id)}
+                    key={loop.id}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      selectLoop(loop.id);
+                    }}
+                  >
                     <strong>{loop.title}</strong>
                     <span>{loop.subtitle}</span>
                     <em>{loop.estimatedDuration} / finale: {loopFinaleTitle(loop)}</em>
-                  </button>
+                  </a>
                 ))}
               </div>
             </div>
