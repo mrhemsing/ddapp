@@ -556,6 +556,78 @@ button {
   font-size: 18px;
 }
 
+.resume-panel {
+  border-color: rgba(114, 255, 87, 0.28);
+}
+
+.stops-board {
+  max-height: min(460px, 62svh);
+  overflow: auto;
+}
+
+.stops-list {
+  display: grid;
+  gap: 8px;
+}
+
+.stop-row {
+  display: grid;
+  grid-template-columns: 42px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 56px;
+  border: 1px solid rgba(230, 225, 214, 0.1);
+  border-radius: 2px;
+  background: rgba(10, 9, 8, 0.68);
+  color: var(--bone);
+  cursor: pointer;
+  padding: 10px;
+  text-align: left;
+}
+
+.stop-row span,
+.stop-row em {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.stop-row span {
+  color: var(--sick);
+}
+
+.stop-row strong {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.stop-row em {
+  color: var(--ash);
+  text-align: right;
+}
+
+.stop-row[data-status="current"] {
+  border-color: rgba(179, 0, 15, 0.7);
+  box-shadow: inset 0 0 18px rgba(179, 0, 15, 0.12);
+}
+
+.stop-row[data-status="done"] em {
+  color: var(--sick);
+}
+
+.stop-row[data-status="skipped"] em,
+.stop-row[data-status="sealed"] em {
+  color: var(--blood-hot);
+}
+
+.stop-row-locked {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .recap-panel {
   border-color: rgba(159, 0, 11, 0.62);
   background:

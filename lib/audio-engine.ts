@@ -7,6 +7,7 @@ export class DarkDrivesAudioEngine {
   private narrationGain: GainNode | null = null;
   private ambientGain: GainNode | null = null;
   private ambientSource: ActiveSource = null;
+  private activeOneShots = new Set<AudioBufferSourceNode>();
   private bufferCache = new Map<string, AudioBuffer>();
 
   get isUnlocked() {
@@ -74,11 +75,13 @@ export class DarkDrivesAudioEngine {
     const source = context.createBufferSource();
     source.buffer = buffer;
     source.connect(narrationGain);
+    this.activeOneShots.add(source);
     narrationGain.gain.setValueAtTime(0.0001, context.currentTime);
     narrationGain.gain.exponentialRampToValueAtTime(Math.min(Math.max(volume, 0.0001), 1), context.currentTime + 0.05);
 
     return new Promise<void>((resolve) => {
       source.onended = () => {
+        this.activeOneShots.delete(source);
         narrationGain.gain.cancelScheduledValues(context.currentTime);
         narrationGain.gain.setTargetAtTime(0.0001, context.currentTime, 0.04);
         if (duckAmbient) {
@@ -91,7 +94,20 @@ export class DarkDrivesAudioEngine {
     });
   }
 
+  stopOneShots() {
+    for (const source of this.activeOneShots) {
+      try {
+        source.stop();
+      } catch {
+        // Source may already be stopped.
+      }
+    }
+    this.activeOneShots.clear();
+  }
+
   stopAll() {
+    this.stopOneShots();
+
     if (this.ambientSource) {
       try {
         this.ambientSource.stop();

@@ -9,10 +9,19 @@ import { createWakeLockHandle } from "@/lib/wake-lock";
 type PlayerState = "preflight" | "ready" | "traveling" | "approaching" | "armed" | "playing" | "played" | "ended";
 type LocationMode = "unknown" | "watching" | "manual" | "denied";
 const activeDriveStates: PlayerState[] = ["traveling", "approaching", "armed", "playing", "played"];
+const resumeStorageKey = "dark-drives:route-session";
 
 type SessionEvent =
   | { type: "stopCompleted"; stopId: string; stopTitle: string; timestamp: string }
   | { type: "ritual"; stopId: string; stopTitle: string; ritualId: string; ritualLabel: string; payoffFired: boolean; timestamp: string };
+
+type ResumeState = {
+  routeId: string;
+  activeStopIndex: number;
+  skippedStopIds: string[];
+  sessionEvents: SessionEvent[];
+  savedAt: string;
+};
 
 type PositionFix = {
   lat: number;
@@ -79,7 +88,13 @@ function localTime(timestamp: string) {
 }
 
 function recapStats(events: SessionEvent[]) {
-  const completedStops = events.filter((event) => event.type === "stopCompleted");
+  const completedById = new Map<string, Extract<SessionEvent, { type: "stopCompleted" }>>();
+  for (const event of events) {
+    if (event.type === "stopCompleted" && !completedById.has(event.stopId)) {
+      completedById.set(event.stopId, event);
+    }
+  }
+  const completedStops = [...completedById.values()];
   const rituals = events.filter((event) => event.type === "ritual");
   const answered = rituals.filter((event) => event.payoffFired);
   const featured = answered[0] ?? rituals[0] ?? completedStops.at(-1);
@@ -180,9 +195,13 @@ export function RoutePlayer() {
   const [isForeground, setIsForeground] = useState(true);
   const [ritualMessage, setRitualMessage] = useState("");
   const [sessionEvents, setSessionEvents] = useState<SessionEvent[]>([]);
+  const [skippedStopIds, setSkippedStopIds] = useState<string[]>([]);
+  const [isStopsBoardOpen, setIsStopsBoardOpen] = useState(false);
+  const [resumeState, setResumeState] = useState<ResumeState | null>(null);
   const [shareStatus, setShareStatus] = useState("");
   const audioEngine = useRef<DarkDrivesAudioEngine | null>(null);
   const wakeLock = useRef(createWakeLockHandle());
+  const playbackToken = useRef(0);
   const lastLocationUpdate = useRef(0);
   const lastPositionFix = useRef<PositionFix | null>(null);
   const hasAutoArmedStop = useRef(false);
@@ -195,6 +214,17 @@ export function RoutePlayer() {
     "--heartbeat-ms": `${heartbeatMs}ms`
   } as CSSProperties;
   const stats = recapStats(sessionEvents);
+  const completedStopIds = useMemo(
+    () => new Set(stats.completedStops.map((event) => event.stopId)),
+    [stats.completedStops]
+  );
+  const skippedStopIdSet = useMemo(() => new Set(skippedStopIds), [skippedStopIds]);
+  const canSkip = Boolean(
+    route &&
+    currentStop &&
+    activeStopIndex < route.stops.length - 1 &&
+    (playerState === "traveling" || playerState === "approaching" || playerState === "armed")
+  );
 
   useEffect(() => {
     let active = true;
@@ -243,6 +273,18 @@ export function RoutePlayer() {
       return;
     }
 
+    try {
+      const stored = window.localStorage.getItem(resumeStorageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored) as ResumeState;
+        if (parsed.routeId === route.id && route.stops[parsed.activeStopIndex]) {
+          setResumeState(parsed);
+        }
+      }
+    } catch {
+      window.localStorage.removeItem(resumeStorageKey);
+    }
+
     audioEngine.current = new DarkDrivesAudioEngine();
 
     void isRouteCached(route).then((cached) => {
@@ -252,6 +294,30 @@ export function RoutePlayer() {
       }
     });
   }, [route]);
+
+  useEffect(() => {
+    if (!route) {
+      return;
+    }
+
+    if (playerState === "ended") {
+      window.localStorage.removeItem(resumeStorageKey);
+      return;
+    }
+
+    if (playerState === "preflight" || playerState === "ready") {
+      return;
+    }
+
+    const state: ResumeState = {
+      routeId: route.id,
+      activeStopIndex,
+      skippedStopIds,
+      sessionEvents,
+      savedAt: new Date().toISOString()
+    };
+    window.localStorage.setItem(resumeStorageKey, JSON.stringify(state));
+  }, [activeStopIndex, playerState, route, sessionEvents, skippedStopIds]);
 
   useEffect(() => {
     const handleVisibility = () => setIsForeground(document.visibilityState === "visible");
@@ -403,12 +469,21 @@ export function RoutePlayer() {
     }
 
     if (playerState === "armed") {
+      const token = playbackToken.current;
       setPlayerState("playing");
       await audioEngine.current?.startAmbient(ambientUrl);
-        setIsNarrating(true);
-        await audioEngine.current?.playNarration(currentStop.audio.narrationFile);
-        setIsNarrating(false);
-        setSessionEvents((events) => [
+      setIsNarrating(true);
+      await audioEngine.current?.playNarration(currentStop.audio.narrationFile);
+      if (token !== playbackToken.current) {
+        return;
+      }
+      setIsNarrating(false);
+      setSessionEvents((events) => {
+        if (events.some((event) => event.type === "stopCompleted" && event.stopId === currentStop.id)) {
+          return events;
+        }
+
+        return [
           ...events,
           {
             type: "stopCompleted",
@@ -416,9 +491,10 @@ export function RoutePlayer() {
             stopTitle: currentStop.title,
             timestamp: new Date().toISOString()
           }
-        ]);
-        setPlayerState("played");
-        return;
+        ];
+      });
+      setPlayerState("played");
+      return;
     }
 
     if (playerState === "played") {
@@ -461,6 +537,55 @@ export function RoutePlayer() {
     setPlayerState("armed");
   }
 
+  function resetStopContext(nextIndex: number) {
+    playbackToken.current += 1;
+    audioEngine.current?.stopOneShots();
+    setIsNarrating(false);
+    setActiveStopIndex(nextIndex);
+    setDistanceMeters(null);
+    setEffectiveArriveRadius(null);
+    setApproachIntensity(0);
+    setRitualMessage("");
+    setShareStatus("");
+    setCurrentPosition(null);
+    lastPositionFix.current = null;
+    hasAutoArmedStop.current = false;
+    setIsStopsBoardOpen(false);
+    setResumeState(null);
+    setPlayerState("traveling");
+    void audioEngine.current?.startAmbient(route?.stops[nextIndex]?.audio.ambientFile ?? ambientUrl);
+    audioEngine.current?.setAmbientVolume(0.2);
+  }
+
+  function skipCurrentStop() {
+    if (!route || !currentStop || activeStopIndex >= route.stops.length - 1) {
+      return;
+    }
+
+    if (!completedStopIds.has(currentStop.id)) {
+      setSkippedStopIds((ids) => (ids.includes(currentStop.id) ? ids : [...ids, currentStop.id]));
+    }
+    resetStopContext(activeStopIndex + 1);
+  }
+
+  function jumpToStop(index: number) {
+    if (!route?.stops[index]) {
+      return;
+    }
+
+    resetStopContext(index);
+  }
+
+  function resumeDrive() {
+    if (!route || !resumeState || !route.stops[resumeState.activeStopIndex]) {
+      return;
+    }
+
+    setSkippedStopIds(resumeState.skippedStopIds);
+    setSessionEvents(resumeState.sessionEvents);
+    resetStopContext(resumeState.activeStopIndex);
+  }
+
   function resetDemo() {
     setActiveStopIndex(0);
     setDistanceMeters(null);
@@ -471,7 +596,10 @@ export function RoutePlayer() {
     hasAutoArmedStop.current = false;
     setRitualMessage("");
     setSessionEvents([]);
+    setSkippedStopIds([]);
+    setResumeState(null);
     setShareStatus("");
+    window.localStorage.removeItem(resumeStorageKey);
     setPlayerState("ready");
   }
 
@@ -481,15 +609,22 @@ export function RoutePlayer() {
     }
 
     setRitualMessage(ritual.instructionText);
+    const token = playbackToken.current;
     if (ritual.cueAudio) {
       setIsNarrating(true);
       await audioEngine.current?.playNarration(ritual.cueAudio);
+      if (token !== playbackToken.current) {
+        return;
+      }
       setIsNarrating(false);
     }
     const payoffFired = Boolean(ritual.payoff && Math.random() <= ritual.payoff.probability);
 
     if (payoffFired && ritual.payoff) {
       await new Promise((resolve) => window.setTimeout(resolve, ritual.payoff?.delayMs ?? 0));
+      if (token !== playbackToken.current) {
+        return;
+      }
       await audioEngine.current?.playEffect(ritual.payoff.audioFile, 0.34);
     }
 
@@ -576,6 +711,19 @@ export function RoutePlayer() {
             </div>
           ) : (
             <>
+          {resumeState && (playerState === "preflight" || playerState === "ready") && (
+            <div className="panel resume-panel">
+              <span className="corner-a" aria-hidden />
+              <span className="corner-b" aria-hidden />
+              <div className="file-row">
+                <span className="file-tab">SESSION FOUND</span>
+                <span className="sealed">{route.stops[resumeState.activeStopIndex]?.title ?? "Saved drive"}</span>
+              </div>
+              <h2>Resume your drive</h2>
+              <p>Saved at {localTime(resumeState.savedAt)}. Route access is still checked by the server.</p>
+              <button className="small-button" onClick={resumeDrive}>Resume</button>
+            </div>
+          )}
 
           <div className="hero">
             <span className="stop-count">
@@ -599,7 +747,47 @@ export function RoutePlayer() {
             <button className="secondary" onClick={armManually} disabled={playerState === "preflight" || playerState === "ready" || playerState === "playing" || playerState === "ended"}>
               I&apos;m Here
             </button>
+            <button className="secondary" onClick={() => setIsStopsBoardOpen((open) => !open)} disabled={playerState === "preflight"}>
+              Stops
+            </button>
+            <button className="secondary" onClick={skipCurrentStop} disabled={!canSkip}>
+              Skip
+            </button>
           </div>
+
+          {isStopsBoardOpen && (
+            <div className="panel stops-board" aria-label="Stops board">
+              <span className="corner-a" aria-hidden />
+              <span className="corner-b" aria-hidden />
+              <div className="file-row">
+                <span className="file-tab">STOPS BOARD</span>
+                <span className="sealed">{stats.completedStops.length}/{route.stops.length} DONE</span>
+              </div>
+              <div className="stops-list">
+                {route.stops.map((stop, index) => {
+                  const isCurrent = index === activeStopIndex;
+                  const isCompleted = completedStopIds.has(stop.id);
+                  const isSkipped = skippedStopIdSet.has(stop.id) && !isCompleted;
+                  const status = isCurrent ? "current" : isCompleted ? "done" : isSkipped ? "skipped" : "upcoming";
+
+                  return (
+                    <button className="stop-row" data-status={status} key={stop.id} onClick={() => jumpToStop(index)}>
+                      <span>{String(index + 1).padStart(2, "0")}</span>
+                      <strong>{stop.title}</strong>
+                      <em>{status}</em>
+                    </button>
+                  );
+                })}
+                {route.sealedStops?.map((sealedStop) => (
+                  <div className="stop-row stop-row-locked" data-status="sealed" key={sealedStop.id}>
+                    <span>{String(sealedStop.order).padStart(2, "0")}</span>
+                    <strong>{sealedStop.title}</strong>
+                    <em>sealed</em>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {currentStop.rituals && (playerState === "armed" || playerState === "playing" || playerState === "played") && (
             <div className="ritual-panel" aria-label="Ritual actions">
