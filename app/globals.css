@@ -140,6 +140,7 @@ button {
 
 .wordmark {
   position: relative;
+  margin-block: 4px 5px;
   padding-right: 0.38em;
   color: var(--blood-hot);
   font-family: var(--font-logo);
