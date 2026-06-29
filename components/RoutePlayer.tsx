@@ -17,6 +17,7 @@ type SessionEvent =
 
 type ResumeState = {
   routeId: string;
+  loopId?: string;
   activeStopIndex: number;
   skippedStopIds: string[];
   sessionEvents: SessionEvent[];
@@ -114,15 +115,15 @@ function projectPoint(position: Pick<Stop, "lat" | "lng">, bounds: { minLat: num
 }
 
 function RouteMap({
-  route,
+  stops,
   activeStopIndex,
   currentPosition
 }: {
-  route: RoutePack;
+  stops: Stop[];
   activeStopIndex: number;
   currentPosition: PositionFix | null;
 }) {
-  const points = route.stops.map((stop) => stop.parkPoint ?? stop);
+  const points = stops.map((stop) => stop.parkPoint ?? stop);
   const allPoints = currentPosition ? [...points, currentPosition] : points;
   const latValues = allPoints.map((point) => point.lat);
   const lngValues = allPoints.map((point) => point.lng);
@@ -154,7 +155,7 @@ function RouteMap({
         </defs>
         <polyline className="route-path" points={path} />
         {plottedStops.map((point, index) => (
-          <g key={route.stops[index].id} className={index === activeStopIndex ? "active-node" : ""}>
+          <g key={stops[index].id} className={index === activeStopIndex ? "active-node" : ""}>
             <circle
               className={index === 0 ? "start-node" : index === plottedStops.length - 1 ? "finish-node" : "stop-node"}
               cx={point.x}
@@ -198,6 +199,7 @@ export function RoutePlayer() {
   const [skippedStopIds, setSkippedStopIds] = useState<string[]>([]);
   const [isStopsBoardOpen, setIsStopsBoardOpen] = useState(false);
   const [resumeState, setResumeState] = useState<ResumeState | null>(null);
+  const [selectedLoopId, setSelectedLoopId] = useState<string | null>(null);
   const [shareStatus, setShareStatus] = useState("");
   const audioEngine = useRef<DarkDrivesAudioEngine | null>(null);
   const wakeLock = useRef(createWakeLockHandle());
@@ -205,7 +207,19 @@ export function RoutePlayer() {
   const lastLocationUpdate = useRef(0);
   const lastPositionFix = useRef<PositionFix | null>(null);
   const hasAutoArmedStop = useRef(false);
-  const currentStop = route?.stops[activeStopIndex] ?? null;
+  const selectedLoop = route?.loops?.find((loop) => loop.id === selectedLoopId) ?? route?.loops?.[0] ?? null;
+  const stopById = useMemo(() => new Map(route?.stops.map((stop) => [stop.id, stop]) ?? []), [route]);
+  const activeStops = useMemo(() => {
+    if (!route) return [];
+    if (!selectedLoop) return route.stops;
+    return selectedLoop.stopIds.map((id) => stopById.get(id)).filter((stop): stop is Stop => Boolean(stop));
+  }, [route, selectedLoop, stopById]);
+  const selectedLoopSealedStops = useMemo(() => {
+    if (!selectedLoop) return route?.sealedStops ?? [];
+    const ids = new Set(selectedLoop.stopIds);
+    return route?.sealedStops?.filter((stop) => ids.has(stop.id)) ?? [];
+  }, [route, selectedLoop]);
+  const currentStop = activeStops[activeStopIndex] ?? null;
   const ambientUrl = currentStop?.audio.ambientFile ?? "/audio/ambient-low.wav";
   const isDriveActive = activeDriveStates.includes(playerState);
   const heartbeatMs = Math.round(2200 - approachIntensity * 1500);
@@ -222,7 +236,7 @@ export function RoutePlayer() {
   const canSkip = Boolean(
     route &&
     currentStop &&
-    activeStopIndex < route.stops.length - 1 &&
+    activeStopIndex < activeStops.length - 1 &&
     (playerState === "traveling" || playerState === "approaching" || playerState === "armed")
   );
 
@@ -264,9 +278,9 @@ export function RoutePlayer() {
     if (playerState === "approaching") return { label: "Something Is Close", disabled: true, className: "approaching" };
     if (playerState === "armed") return { label: "Wake It", disabled: false, className: "ready" };
     if (playerState === "playing") return { label: "Listen", disabled: true, className: "playing" };
-    if (playerState === "played") return { label: activeStopIndex === route.stops.length - 1 ? "Close Route" : "Next File", disabled: false, className: "" };
+    if (playerState === "played") return { label: activeStopIndex === activeStops.length - 1 ? "Close Route" : "Next File", disabled: false, className: "" };
     return { label: "Route Closed", disabled: true, className: "" };
-  }, [activeStopIndex, playerState, route]);
+  }, [activeStopIndex, activeStops.length, playerState, route]);
 
   useEffect(() => {
     if (!route) {
@@ -277,7 +291,10 @@ export function RoutePlayer() {
       const stored = window.localStorage.getItem(resumeStorageKey);
       if (stored) {
         const parsed = JSON.parse(stored) as ResumeState;
-        if (parsed.routeId === route.id && route.stops[parsed.activeStopIndex]) {
+        if (parsed.routeId === route.id && (!parsed.loopId || route.loops?.some((loop) => loop.id === parsed.loopId))) {
+          if (parsed.loopId) {
+            setSelectedLoopId(parsed.loopId);
+          }
           setResumeState(parsed);
         }
       }
@@ -311,13 +328,14 @@ export function RoutePlayer() {
 
     const state: ResumeState = {
       routeId: route.id,
+      loopId: selectedLoop?.id,
       activeStopIndex,
       skippedStopIds,
       sessionEvents,
       savedAt: new Date().toISOString()
     };
     window.localStorage.setItem(resumeStorageKey, JSON.stringify(state));
-  }, [activeStopIndex, playerState, route, sessionEvents, skippedStopIds]);
+  }, [activeStopIndex, playerState, route, selectedLoop, sessionEvents, skippedStopIds]);
 
   useEffect(() => {
     const handleVisibility = () => setIsForeground(document.visibilityState === "visible");
@@ -498,7 +516,7 @@ export function RoutePlayer() {
     }
 
     if (playerState === "played") {
-      if (activeStopIndex === route.stops.length - 1) {
+      if (activeStopIndex === activeStops.length - 1) {
         setPlayerState("playing");
         setIsNarrating(true);
         await audioEngine.current?.playNarration(route.outroAudio);
@@ -553,12 +571,39 @@ export function RoutePlayer() {
     setIsStopsBoardOpen(false);
     setResumeState(null);
     setPlayerState("traveling");
-    void audioEngine.current?.startAmbient(route?.stops[nextIndex]?.audio.ambientFile ?? ambientUrl);
+    void audioEngine.current?.startAmbient(activeStops[nextIndex]?.audio.ambientFile ?? ambientUrl);
     audioEngine.current?.setAmbientVolume(0.2);
   }
 
+  function selectLoop(loopId: string) {
+    if (loopId === selectedLoop?.id) {
+      return;
+    }
+
+    playbackToken.current += 1;
+    audioEngine.current?.stopOneShots();
+    setSelectedLoopId(loopId);
+    setActiveStopIndex(0);
+    setDistanceMeters(null);
+    setEffectiveArriveRadius(null);
+    setApproachIntensity(0);
+    setCurrentPosition(null);
+    setRitualMessage("");
+    setSkippedStopIds([]);
+    setSessionEvents([]);
+    setShareStatus("");
+    setResumeState(null);
+    setIsStopsBoardOpen(false);
+    lastPositionFix.current = null;
+    hasAutoArmedStop.current = false;
+    window.localStorage.removeItem(resumeStorageKey);
+    if (playerState !== "preflight") {
+      setPlayerState("ready");
+    }
+  }
+
   function skipCurrentStop() {
-    if (!route || !currentStop || activeStopIndex >= route.stops.length - 1) {
+    if (!route || !currentStop || activeStopIndex >= activeStops.length - 1) {
       return;
     }
 
@@ -569,7 +614,7 @@ export function RoutePlayer() {
   }
 
   function jumpToStop(index: number) {
-    if (!route?.stops[index]) {
+    if (!activeStops[index]) {
       return;
     }
 
@@ -577,7 +622,20 @@ export function RoutePlayer() {
   }
 
   function resumeDrive() {
-    if (!route || !resumeState || !route.stops[resumeState.activeStopIndex]) {
+    if (!route || !resumeState) {
+      return;
+    }
+
+    if (resumeState.loopId) {
+      const resumeLoop = route.loops?.find((loop) => loop.id === resumeState.loopId);
+      const resumeStops = resumeLoop
+        ? resumeLoop.stopIds.map((id) => stopById.get(id)).filter((stop): stop is Stop => Boolean(stop))
+        : route.stops;
+      if (!resumeStops[resumeState.activeStopIndex]) {
+        return;
+      }
+      setSelectedLoopId(resumeState.loopId);
+    } else if (!activeStops[resumeState.activeStopIndex]) {
       return;
     }
 
@@ -725,9 +783,35 @@ export function RoutePlayer() {
             </div>
           )}
 
+          {route.loops && route.loops.length > 0 && (playerState === "preflight" || playerState === "ready") && (
+            <div className="panel loop-panel">
+              <span className="corner-a" aria-hidden />
+              <span className="corner-b" aria-hidden />
+              <div className="file-row">
+                <span className="file-tab">ROUTE LOOP</span>
+                <span className="sealed">{selectedLoop?.estimatedDuration ?? "Choose"}</span>
+              </div>
+              <div className="loop-list">
+                {route.loops.map((loop) => {
+                  const liveCount = loop.stopIds.filter((id) => stopById.has(id)).length;
+                  const heldCount = loop.stopIds.length - liveCount;
+                  const selected = loop.id === selectedLoop?.id;
+
+                  return (
+                    <button className="loop-button" data-selected={selected} key={loop.id} onClick={() => selectLoop(loop.id)}>
+                      <strong>{loop.title}</strong>
+                      <span>{loop.subtitle}</span>
+                      <em>{liveCount} live{heldCount > 0 ? ` / ${heldCount} sealed` : ""}</em>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="hero">
             <span className="stop-count">
-              Stop {activeStopIndex + 1} of {route.stops.length}
+              {selectedLoop?.title ?? "Route"} / Stop {activeStopIndex + 1} of {activeStops.length}
             </span>
             <h2 className="stop-name">{currentStop.title}</h2>
             <div className="presence" data-state={playerState}>
@@ -761,10 +845,10 @@ export function RoutePlayer() {
               <span className="corner-b" aria-hidden />
               <div className="file-row">
                 <span className="file-tab">STOPS BOARD</span>
-                <span className="sealed">{stats.completedStops.length}/{route.stops.length} DONE</span>
+                <span className="sealed">{stats.completedStops.length}/{activeStops.length} DONE</span>
               </div>
               <div className="stops-list">
-                {route.stops.map((stop, index) => {
+                {activeStops.map((stop, index) => {
                   const isCurrent = index === activeStopIndex;
                   const isCompleted = completedStopIds.has(stop.id);
                   const isSkipped = skippedStopIdSet.has(stop.id) && !isCompleted;
@@ -778,7 +862,7 @@ export function RoutePlayer() {
                     </button>
                   );
                 })}
-                {route.sealedStops?.map((sealedStop) => (
+                {selectedLoopSealedStops.map((sealedStop) => (
                   <div className="stop-row stop-row-locked" data-status="sealed" key={sealedStop.id}>
                     <span>{String(sealedStop.order).padStart(2, "0")}</span>
                     <strong>{sealedStop.title}</strong>
@@ -812,7 +896,7 @@ export function RoutePlayer() {
           {playerState !== "preflight" && (
             <details className="map-drawer">
               <summary>Route signal</summary>
-              <RouteMap route={route} activeStopIndex={activeStopIndex} currentPosition={currentPosition} />
+              <RouteMap stops={activeStops} activeStopIndex={activeStopIndex} currentPosition={currentPosition} />
             </details>
           )}
 
@@ -877,19 +961,19 @@ export function RoutePlayer() {
             </div>
             <div className="feed-row">
               <span>Sealed files</span>
-              <strong>{route.sealedStops?.length ?? 0}</strong>
+              <strong>{selectedLoopSealedStops.length}</strong>
             </div>
             {playerState === "ended" && <button className="small-button" onClick={resetDemo}>Reset demo</button>}
           </div>}
-          {route.sealedStops && route.sealedStops.length > 0 && (
+          {selectedLoopSealedStops.length > 0 && (
             <div className="panel">
               <span className="corner-a" aria-hidden />
               <span className="corner-b" aria-hidden />
               <div className="file-row">
                 <span className="file-tab">SEALED FILES</span>
-                <span className="sealed">{route.sealedStops.length} HELD</span>
+                <span className="sealed">{selectedLoopSealedStops.length} HELD</span>
               </div>
-              {route.sealedStops.map((sealedStop) => (
+              {selectedLoopSealedStops.map((sealedStop) => (
                 <div className="sealed-entry" key={sealedStop.id}>
                   <h2>{String(sealedStop.order).padStart(2, "0")} {sealedStop.title}</h2>
                   <p>{sealedStop.reason}</p>

@@ -560,6 +560,57 @@ button {
   border-color: rgba(114, 255, 87, 0.28);
 }
 
+.loop-panel {
+  background: rgba(7, 6, 6, 0.72);
+}
+
+.loop-list {
+  display: grid;
+  gap: 8px;
+}
+
+.loop-button {
+  display: grid;
+  gap: 4px;
+  min-height: 64px;
+  border: 1px solid rgba(230, 225, 214, 0.1);
+  border-radius: 2px;
+  background: rgba(10, 9, 8, 0.66);
+  color: var(--bone);
+  cursor: pointer;
+  padding: 12px;
+  text-align: left;
+}
+
+.loop-button[data-selected="true"] {
+  border-color: rgba(179, 0, 15, 0.72);
+  box-shadow: inset 0 0 18px rgba(179, 0, 15, 0.14);
+}
+
+.loop-button strong {
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.loop-button span,
+.loop-button em {
+  color: var(--ash);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.3;
+}
+
+.loop-button em {
+  color: var(--sick);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
 .stops-board {
   max-height: min(460px, 62svh);
   overflow: auto;

@@ -15,6 +15,126 @@ const ambientFile = "/audio/ambient-low.wav";
 const configIdAliases = new Map([
   ["woodlawn", "woodlawn-cemetery"]
 ]);
+const routeLoops = [
+  {
+    id: "west-side-dead-drive",
+    title: "West Side Dead Drive",
+    subtitle: "SW dread crescendo. Ends on Hodgson Road.",
+    estimatedDuration: "About 2 hours",
+    stopIds: [
+      "pierre-radisson-park",
+      "mcnab-park",
+      "laurier-drive-bus-stop",
+      "lester-b-pearson-school",
+      "confed-crawler",
+      "shell-station-22nd",
+      "westmount-park",
+      "saskatoon-sanatorium-site",
+      "western-development-museum",
+      "haunted-road",
+      "leisureland",
+      "hodgson-road"
+    ]
+  },
+  {
+    id: "edge-of-town",
+    title: "The Edge of Town",
+    subtitle: "North and east past the streetlights.",
+    estimatedDuration: "About 2 hours",
+    stopIds: [
+      "bugsys-bar-and-grill",
+      "factoria-ruins",
+      "agra-road",
+      "woodlawn",
+      "forestry-farm",
+      "sutherland-dog-park",
+      "central-avenue-circle-k-alley",
+      "evergreen-east",
+      "range-road-3043"
+    ]
+  },
+  {
+    id: "campus-after-dark",
+    title: "Campus After Dark",
+    subtitle: "U of S, the river, and the trapped voice.",
+    estimatedDuration: "About 70 minutes",
+    stopIds: [
+      "ea-davies-building",
+      "spadina-crescent-bridge",
+      "thorvaldson-building",
+      "john-mitchell-building",
+      "archaeology-building",
+      "spadina-soldier",
+      "hose-and-hydrant",
+      "university-bridge"
+    ]
+  },
+  {
+    id: "nutana-broadway",
+    title: "Nutana & Broadway",
+    subtitle: "Old Saskatoon and the cemetery finale.",
+    estimatedDuration: "About 95 minutes",
+    stopIds: [
+      "nutana-school",
+      "marr-residence",
+      "smith-block",
+      "black-alley",
+      "wiggins-park",
+      "james-anderson",
+      "mark-thompson-park",
+      "college-park-school",
+      "devils-tail-crossing",
+      "nutana-pioneer-cemetery"
+    ]
+  },
+  {
+    id: "complete-the-city",
+    title: "Complete the City",
+    subtitle: "The full marathon route.",
+    estimatedDuration: "About 6 hours",
+    stopIds: [
+      "woodlawn",
+      "ea-davies-building",
+      "westmount-park",
+      "shell-station-22nd",
+      "confed-crawler",
+      "laurier-drive-bus-stop",
+      "lester-b-pearson-school",
+      "pierre-radisson-park",
+      "mcnab-park",
+      "bugsys-bar-and-grill",
+      "factoria-ruins",
+      "agra-road",
+      "evergreen-east",
+      "range-road-3043",
+      "forestry-farm",
+      "sutherland-dog-park",
+      "spadina-crescent-bridge",
+      "central-avenue-circle-k-alley",
+      "college-park-school",
+      "mark-thompson-park",
+      "james-anderson",
+      "black-alley",
+      "wiggins-park",
+      "archaeology-building",
+      "john-mitchell-building",
+      "thorvaldson-building",
+      "university-bridge",
+      "spadina-soldier",
+      "hose-and-hydrant",
+      "nutana-school",
+      "marr-residence",
+      "smith-block",
+      "western-development-museum",
+      "nutana-pioneer-cemetery",
+      "devils-tail-crossing",
+      "saskatoon-sanatorium-site",
+      "haunted-road",
+      "leisureland",
+      "hodgson-road"
+    ]
+  }
+];
 
 function asStopsConfig(raw) {
   if (Array.isArray(raw)) return raw;
@@ -206,7 +326,8 @@ const routePack = {
   outroAudio: fakeRoute.outroAudio,
   outroScript: fakeRoute.outroScript,
   stops,
-  sealedStops
+  sealedStops,
+  loops: routeLoops
 };
 
 const json = JSON.stringify(routePack, null, 2);

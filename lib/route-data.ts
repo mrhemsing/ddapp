@@ -54,6 +54,14 @@ export type SealedStop = {
   safetyNote?: string;
 };
 
+export type RouteLoop = {
+  id: string;
+  title: string;
+  subtitle: string;
+  estimatedDuration: string;
+  stopIds: string[];
+};
+
 export type RoutePack = {
   id: string;
   title: string;
@@ -64,6 +72,7 @@ export type RoutePack = {
   outroScript?: string;
   stops: Stop[];
   sealedStops?: SealedStop[];
+  loops?: RouteLoop[];
 };
 
 export const fakeRoute: RoutePack = {
