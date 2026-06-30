@@ -21,6 +21,10 @@ export type PlaybackProgress = {
   percent: number;
 };
 
+const FOREGROUND_VOLUME_BOOST = 1.55;
+const MAX_FOREGROUND_VOLUME = 1.8;
+const DEFAULT_NARRATION_VOLUME = 0.95;
+
 export class DarkDrivesAudioEngine {
   private context: AudioContext | null = null;
   private narrationGain: GainNode | null = null;
@@ -85,10 +89,11 @@ export class DarkDrivesAudioEngine {
     ambientGain.gain.setTargetAtTime(0.08, context.currentTime, 0.06);
     narrationGain.gain.cancelScheduledValues(context.currentTime);
     narrationGain.gain.setValueAtTime(0.0001, context.currentTime);
-    narrationGain.gain.exponentialRampToValueAtTime(0.95, context.currentTime + 0.05);
+    const volume = this.foregroundVolume(DEFAULT_NARRATION_VOLUME);
+    narrationGain.gain.exponentialRampToValueAtTime(volume, context.currentTime + 0.05);
 
     return new Promise<void>((resolve) => {
-      this.startNarrationSource({ buffer, offset: 0, volume: 0.95, resolve });
+      this.startNarrationSource({ buffer, offset: 0, volume, resolve });
     });
   }
 
@@ -190,7 +195,7 @@ export class DarkDrivesAudioEngine {
     source.connect(narrationGain);
     this.activeOneShots.set(source, { source, buffer, startedAt: context.currentTime });
     narrationGain.gain.setValueAtTime(0.0001, context.currentTime);
-    narrationGain.gain.exponentialRampToValueAtTime(Math.min(Math.max(volume, 0.0001), 1), context.currentTime + 0.05);
+    narrationGain.gain.exponentialRampToValueAtTime(this.foregroundVolume(volume), context.currentTime + 0.05);
 
     return new Promise<void>((resolve) => {
       source.onended = () => {
@@ -290,6 +295,10 @@ export class DarkDrivesAudioEngine {
       duration: safeDuration,
       percent: Math.round((safePosition / safeDuration) * 1000) / 10
     };
+  }
+
+  private foregroundVolume(volume: number) {
+    return Math.min(Math.max(volume * FOREGROUND_VOLUME_BOOST, 0.0001), MAX_FOREGROUND_VOLUME);
   }
 
   private startNarrationSource(narration: Omit<ActiveNarration, "source" | "startedAt" | "stopReason"> | ActiveNarration) {
