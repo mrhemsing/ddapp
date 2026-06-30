@@ -133,6 +133,10 @@ export class DarkDrivesAudioEngine {
     return this.playOneShot(url, { volume, duckAmbient: false });
   }
 
+  async playCue(url: string, volume = 0.72) {
+    return this.playOneShot(url, { volume, duckAmbient: true });
+  }
+
   private async playOneShot(url: string, { volume, duckAmbient }: { volume: number; duckAmbient: boolean }) {
     const context = this.getContext();
     const narrationGain = this.getNarrationGain();
@@ -168,6 +172,10 @@ export class DarkDrivesAudioEngine {
 
   stopOneShots() {
     this.stopNarration();
+    this.stopEffects();
+  }
+
+  stopEffects() {
     for (const source of this.activeOneShots) {
       try {
         source.stop();

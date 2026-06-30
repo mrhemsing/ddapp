@@ -21,6 +21,7 @@ type PlayerState =
   | "ended";
 type LocationMode = "unknown" | "watching" | "manual" | "denied";
 type NarrationPlayback = "idle" | "playing" | "paused";
+type RitualPlayback = "idle" | "playing" | "played";
 const activeDriveStates: PlayerState[] = ["intro", "introPlayed", "traveling", "approaching", "armed", "playing", "played", "outro", "outroPlayed"];
 const resumeStorageKey = "dark-drives:route-session";
 const welcomeSeenStorageKey = "dark-drives:welcome-seen";
@@ -274,6 +275,8 @@ export function RoutePlayer() {
   const [audioStatus, setAudioStatus] = useState("Locked");
   const [wakeStatus, setWakeStatus] = useState("Not requested");
   const [narrationPlayback, setNarrationPlayback] = useState<NarrationPlayback>("idle");
+  const [ritualPlayback, setRitualPlayback] = useState<RitualPlayback>("idle");
+  const [activeRitualId, setActiveRitualId] = useState<string | null>(null);
   const [isForeground, setIsForeground] = useState(true);
   const [ritualMessage, setRitualMessage] = useState("");
   const [sessionEvents, setSessionEvents] = useState<SessionEvent[]>([]);
@@ -292,6 +295,7 @@ export function RoutePlayer() {
   const screenRef = useRef<HTMLElement | null>(null);
   const wakeLock = useRef(createWakeLockHandle());
   const playbackToken = useRef(0);
+  const ritualPlaybackToken = useRef(0);
   const lastLocationUpdate = useRef(0);
   const lastPositionFix = useRef<PositionFix | null>(null);
   const hasAutoArmedStop = useRef(false);
@@ -748,6 +752,13 @@ export function RoutePlayer() {
     }
   }
 
+  function resetRitualCue() {
+    ritualPlaybackToken.current += 1;
+    audioEngine.current?.stopEffects();
+    setRitualPlayback("idle");
+    setActiveRitualId(null);
+  }
+
   async function playRouteIntro() {
     if (!route) {
       return;
@@ -769,6 +780,7 @@ export function RoutePlayer() {
   function enterDriveAfterIntro() {
     playbackToken.current += 1;
     audioEngine.current?.stopNarration();
+    resetRitualCue();
     setNarrationPlayback("idle");
     setPlayerState("traveling");
     void audioEngine.current?.startAmbient(ambientUrl);
@@ -803,6 +815,7 @@ export function RoutePlayer() {
     }
     playbackToken.current += 1;
     audioEngine.current?.stopAll();
+    resetRitualCue();
     await wakeLock.current.release();
     setWakeStatus("Released");
     setNarrationPlayback("idle");
@@ -881,6 +894,7 @@ export function RoutePlayer() {
   function resetStopContext(nextIndex: number) {
     playbackToken.current += 1;
     audioEngine.current?.stopOneShots();
+    resetRitualCue();
     setNarrationPlayback("idle");
     setActiveStopIndex(nextIndex);
     setDistanceMeters(null);
@@ -968,6 +982,7 @@ export function RoutePlayer() {
     }
     playbackToken.current += 1;
     audioEngine.current?.stopOneShots();
+    resetRitualCue();
     window.localStorage.setItem(welcomeSeenStorageKey, "true");
     setHasSeenWelcome(true);
     setSelectedLoopId(loopId);
@@ -1009,6 +1024,7 @@ export function RoutePlayer() {
     updateLoopUrl(loopId);
     playbackToken.current += 1;
     audioEngine.current?.stopOneShots();
+    resetRitualCue();
     setSelectedLoopId(loopId);
     setActiveStopIndex(0);
     setDistanceMeters(null);
@@ -1036,6 +1052,7 @@ export function RoutePlayer() {
 
     playbackToken.current += 1;
     audioEngine.current?.stopOneShots();
+    resetRitualCue();
     updateLoopUrl(nextUnfinishedLoop.id);
     setSelectedLoopId(nextUnfinishedLoop.id);
     setIsLoopPickerOpen(false);
@@ -1062,6 +1079,7 @@ export function RoutePlayer() {
     }
     playbackToken.current += 1;
     audioEngine.current?.stopAll();
+    resetRitualCue();
     await wakeLock.current.release();
     setWakeStatus("Released");
     setNarrationPlayback("idle");
@@ -1145,26 +1163,39 @@ export function RoutePlayer() {
     setPlayerState("ready");
   }
 
+  function stopRitualCue() {
+    audioEngine.current?.stopEffects();
+  }
+
   async function triggerRitual(ritual: NonNullable<Stop["rituals"]>[number]) {
     if (!currentStop) {
       return;
     }
 
+    if (playerState !== "played" || ritualPlayback === "playing") {
+      return;
+    }
+
     setRitualMessage(ritual.instructionText);
     const token = playbackToken.current;
+    const ritualToken = ritualPlaybackToken.current + 1;
+    ritualPlaybackToken.current = ritualToken;
+    setActiveRitualId(ritual.id);
     if (ritual.cueAudio) {
-      setNarrationPlayback("playing");
-      await audioEngine.current?.playNarration(ritual.cueAudio);
-      if (token !== playbackToken.current) {
+      setRitualPlayback("playing");
+      await audioEngine.current?.playCue(ritual.cueAudio);
+      if (token !== playbackToken.current || ritualToken !== ritualPlaybackToken.current) {
         return;
       }
-      setNarrationPlayback("idle");
+      setRitualPlayback("played");
+    } else {
+      setRitualPlayback("played");
     }
     const payoffFired = Boolean(ritual.payoff && Math.random() <= ritual.payoff.probability);
 
     if (payoffFired && ritual.payoff) {
       await new Promise((resolve) => window.setTimeout(resolve, ritual.payoff?.delayMs ?? 0));
-      if (token !== playbackToken.current) {
+      if (token !== playbackToken.current || ritualToken !== ritualPlaybackToken.current) {
         return;
       }
       await audioEngine.current?.playEffect(ritual.payoff.audioFile, 0.34);
@@ -1510,11 +1541,37 @@ export function RoutePlayer() {
           {currentStop.rituals && (playerState === "armed" || playerState === "playing" || playerState === "played") && (
             <div className="ritual-panel" aria-label="Ritual actions">
               <span className="tiny">Ritual</span>
-              {currentStop.rituals.map((ritual) => (
-                <button className="ritual-button" key={ritual.id} onClick={() => void triggerRitual(ritual)}>
-                  {ritual.label}
-                </button>
-              ))}
+              {currentStop.rituals.map((ritual) => {
+                const isArmed = playerState === "played";
+                const isActive = activeRitualId === ritual.id && ritualPlayback === "playing";
+                const hasPlayed = activeRitualId === ritual.id && ritualPlayback === "played";
+                const ritualLabel = ritual.label.toLowerCase();
+                const buttonLabel = !isArmed
+                  ? "Ready after the story"
+                  : isActive
+                    ? "Stop cue"
+                    : `${hasPlayed ? "Replay" : ritual.cueAudio ? "Play" : "Perform"} ${ritualLabel}`;
+
+                return (
+                  <div className="ritual-action" data-armed={isArmed} key={ritual.id}>
+                    <button
+                      className="ritual-button"
+                      disabled={!isArmed}
+                      onClick={() => isActive ? stopRitualCue() : void triggerRitual(ritual)}
+                    >
+                      {buttonLabel}
+                    </button>
+                    <p>{ritual.instructionText}</p>
+                    {isActive && (
+                      <div className="signal-meter ritual-signal" aria-label={`${ritual.label} signal`}>
+                        {Array.from({ length: 18 }, (_, index) => (
+                          <span key={index} style={{ height: `${26 + ((index * 23) % 68)}%` }} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
               {ritualMessage && <p>{ritualMessage}</p>}
             </div>
           )}

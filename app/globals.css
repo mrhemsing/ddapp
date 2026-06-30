@@ -556,6 +556,16 @@ button {
   padding: 12px;
 }
 
+.ritual-action {
+  display: grid;
+  gap: 8px;
+  opacity: 0.48;
+}
+
+.ritual-action[data-armed="true"] {
+  opacity: 1;
+}
+
 .ritual-button {
   min-height: 56px;
   border: 1px solid var(--blood-dim);
@@ -570,15 +580,32 @@ button {
   text-transform: uppercase;
 }
 
+.ritual-button:disabled {
+  cursor: default;
+  color: var(--ash);
+  opacity: 1;
+}
+
 .ritual-button:hover {
   border-color: var(--blood-hot);
   color: var(--blood-hot);
+}
+
+.ritual-button:disabled:hover {
+  border-color: var(--blood-dim);
+  color: var(--ash);
 }
 
 .ritual-panel p {
   margin: 0;
   color: var(--bone-dim);
   line-height: 1.4;
+}
+
+.ritual-signal {
+  height: 28px;
+  border-color: rgba(179, 0, 15, 0.34);
+  background: rgba(75, 5, 7, 0.24);
 }
 
 .panel {
