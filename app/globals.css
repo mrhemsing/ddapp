@@ -524,7 +524,7 @@ button {
 .welcome-loop-stage {
   position: relative;
   --welcome-stage-height: clamp(390px, 58svh, 520px);
-  --welcome-card-height: clamp(330px, 52svh, 430px);
+  --welcome-card-height: clamp(330px, 46svh, 375px);
   height: var(--welcome-stage-height);
   min-height: 0;
 }
@@ -858,7 +858,7 @@ button {
 
 .welcome-loop-count {
   position: absolute;
-  bottom: 8px;
+  bottom: 0;
   left: 0;
   z-index: 2;
   color: var(--ash);
@@ -918,7 +918,7 @@ button {
 @media (max-height: 720px) {
   .welcome-loop-stage {
     --welcome-stage-height: clamp(370px, 59svh, 410px);
-    --welcome-card-height: clamp(330px, 50svh, 370px);
+    --welcome-card-height: clamp(310px, 46svh, 330px);
   }
 
   .welcome-loop-card {
