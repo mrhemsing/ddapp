@@ -974,6 +974,8 @@ button {
 }
 
 .primary {
+  position: relative;
+  overflow: hidden;
   width: 100%;
   min-height: 96px;
   border: 1px solid var(--ash-line);
@@ -991,6 +993,11 @@ button {
     background 160ms ease,
     box-shadow 160ms ease,
     opacity 160ms ease;
+}
+
+.primary span {
+  position: relative;
+  z-index: 1;
 }
 
 .drive-active .primary {
@@ -1016,6 +1023,24 @@ button {
   animation: pulse 1.7s ease-in-out infinite;
 }
 
+.primary.preparing {
+  border-color: rgba(114, 255, 87, 0.34);
+  background: rgba(9, 18, 10, 0.78);
+  color: var(--sick);
+  opacity: 1;
+}
+
+.primary.preparing::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: var(--prepare-progress, 0%);
+  background:
+    linear-gradient(90deg, rgba(114, 255, 87, 0.24), rgba(114, 255, 87, 0.08)),
+    rgba(114, 255, 87, 0.08);
+  transition: width 180ms ease;
+}
+
 .primary.playing {
   border-color: rgba(114, 255, 87, 0.38);
   background: rgba(21, 61, 28, 0.3);
@@ -1037,6 +1062,19 @@ button {
 .transport-cluster {
   display: grid;
   gap: 10px;
+}
+
+.prepare-route-note {
+  display: grid;
+  gap: 6px;
+  min-height: 96px;
+  color: var(--bone-dim);
+  font-size: 13px;
+  line-height: 1.38;
+}
+
+.prepare-route-note p {
+  margin: 0;
 }
 
 .transport-secondary {

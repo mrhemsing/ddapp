@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowRight, LocateFixed, Navigation, Play } from "lucide-react";
 import { cacheRouteAudio, isRouteCached, type CacheProgress } from "@/lib/audio-cache";
 import { DarkDrivesAudioEngine } from "@/lib/audio-engine";
@@ -444,6 +444,7 @@ export function RoutePlayer() {
   const [playerState, setPlayerState] = useState<PlayerState>("preflight");
   const [cacheProgress, setCacheProgress] = useState<CacheProgress>({ complete: 0, total: 0, percent: 0 });
   const [cacheError, setCacheError] = useState("");
+  const [isPreparingRoute, setIsPreparingRoute] = useState(false);
   const [activeStopIndex, setActiveStopIndex] = useState(0);
   const [distanceMeters, setDistanceMeters] = useState<number | null>(null);
   const [effectiveArriveRadius, setEffectiveArriveRadius] = useState<number | null>(null);
@@ -599,6 +600,8 @@ export function RoutePlayer() {
   const nextUnfinishedLoop = authoredLoops.find((loop) => !completedLoopIdSet.has(loop.id));
   const loopsLeftTonight = authoredLoops.filter((loop) => !completedLoopIdSet.has(loop.id)).length;
   const isPrepared = cacheProgress.percent === 100;
+  const hasStartedRoutePrep = isPreparingRoute || cacheProgress.complete > 0 || cacheProgress.percent > 0 || Boolean(cacheProgress.currentUrl) || Boolean(cacheError);
+  const cacheStatusText = isPrepared ? "Ready offline" : hasStartedRoutePrep ? `${cacheProgress.percent}%` : "Not started";
   const statusLabel = !route
     ? routeError ? "Locked" : "Loading"
     : resumeState && isPreDrive ? "Resume"
@@ -702,6 +705,8 @@ export function RoutePlayer() {
 
   const primary = useMemo(() => {
     if (!route) return { label: "Loading Route", disabled: true, className: "" };
+    if (playerState === "preflight" && isPreparingRoute) return { label: `Preparing ${cacheProgress.percent}%`, disabled: true, className: "preparing" };
+    if (playerState === "preflight" && cacheError) return { label: "Retry", disabled: false, className: "" };
     if (playerState === "preflight") return { label: "Prepare Route", disabled: false, className: "" };
     if (playerState === "ready") return { label: "Opening Signal", disabled: false, className: "ready" };
     if (playerState === "intro" || playerState === "outro") {
@@ -725,7 +730,7 @@ export function RoutePlayer() {
     }
     if (playerState === "played") return { label: "Replay", disabled: false, className: "replay" };
     return { label: "Route Closed", disabled: true, className: "" };
-  }, [narrationPlayback, playerState, route]);
+  }, [cacheError, cacheProgress.percent, isPreparingRoute, narrationPlayback, playerState, route]);
 
   useEffect(() => {
     if (!route) {
@@ -950,11 +955,18 @@ export function RoutePlayer() {
     }
 
     if (playerState === "preflight") {
+      if (isPreparingRoute) {
+        return;
+      }
+
       setCacheError("");
+      setIsPreparingRoute(true);
       try {
         await cacheRouteAudio(route, setCacheProgress);
+        setIsPreparingRoute(false);
         setPlayerState("ready");
       } catch (error) {
+        setIsPreparingRoute(false);
         setCacheError(error instanceof Error ? error.message : "Download failed.");
       }
       return;
@@ -1920,9 +1932,38 @@ export function RoutePlayer() {
           )}
 
           <div className="transport-cluster">
-            <button className={`primary ${primary.className}`} disabled={primary.disabled} onClick={handlePrimary}>
-              {primary.label}
+            <button
+              className={`primary ${primary.className}`}
+              data-preparing={isPreparingRoute}
+              disabled={primary.disabled}
+              onClick={handlePrimary}
+              style={{ "--prepare-progress": `${cacheProgress.percent}%` } as CSSProperties}
+            >
+              <span>{primary.label}</span>
             </button>
+            {isLoopLanding && (playerState === "preflight" || playerState === "ready") && (
+              <div className="prepare-route-note">
+                {playerState === "ready" ? (
+                  <>
+                    <p>Opening signal is ready.</p>
+                    <p>Listen while parked, then Begin Drive when you are ready to move.</p>
+                  </>
+                ) : isPreparingRoute ? (
+                  <>
+                    <p className="cache-current" aria-live="polite">
+                      {cacheProgress.currentUrl ? `Downloading ${cacheFilename(cacheProgress.currentUrl)}` : ""}
+                    </p>
+                    <p>Audio is being stored on this device for offline playback.</p>
+                  </>
+                ) : (
+                  <>
+                    <p>Route audio downloads before the drive starts and plays offline from this device.</p>
+                    <p>Location is requested on Begin Drive so the app can arm stops while foregrounded. If it is off, every stop still works by hand.</p>
+                    {cacheError && <p className="cache-error">{cacheError}</p>}
+                  </>
+                )}
+              </div>
+            )}
             {isDriveActive && narrationPlayback !== "idle" && (
               <PlaybackSignal
                 label="Narration signal"
@@ -2085,29 +2126,6 @@ export function RoutePlayer() {
             </details>
           )}
 
-          {isLoopLanding && (
-            <div className="panel">
-              <span className="corner-a" aria-hidden />
-              <span className="corner-b" aria-hidden />
-              <div className="file-row">
-                <span className="file-tab">FILE 01</span>
-                <span className="sealed">{isPrepared ? "READY" : "SEALED"}</span>
-              </div>
-              <h2>{isPrepared ? "Files sealed" : "Preparing your haunting"}</h2>
-              <div className="progress-track" aria-label="Download progress">
-                <div className="progress-bar" style={{ width: `${cacheProgress.percent}%` }} />
-              </div>
-              <p>
-                {cacheProgress.percent}% cached. All route audio is downloaded before the drive starts, then played from Cache API storage.
-              </p>
-              <p className="cache-current" aria-live="polite">
-                {cacheProgress.currentUrl && cacheProgress.percent < 100 ? `Downloading ${cacheFilename(cacheProgress.currentUrl)}` : ""}
-              </p>
-              <p>Location is requested on Begin Drive so the app can arm stops while foregrounded. If it is off, every stop still works by hand.</p>
-              {cacheError && <p className="cache-error">{cacheError}</p>}
-            </div>
-          )}
-
           {isStopPage && (
             <div className="panel">
               <span className="corner-a" aria-hidden />
@@ -2135,7 +2153,7 @@ export function RoutePlayer() {
               </div>
               <div className="feed-row">
                 <span>Cache</span>
-                <strong>{cacheProgress.percent === 100 ? "Ready offline" : `${cacheProgress.percent}%`}</strong>
+                <strong>{cacheStatusText}</strong>
               </div>
               <div className="feed-row">
                 <span>Location</span>
