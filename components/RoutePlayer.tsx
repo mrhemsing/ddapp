@@ -6,10 +6,22 @@ import { DarkDrivesAudioEngine } from "@/lib/audio-engine";
 import type { RoutePack, Stop } from "@/lib/route-data";
 import { createWakeLockHandle } from "@/lib/wake-lock";
 
-type PlayerState = "preflight" | "ready" | "traveling" | "approaching" | "armed" | "playing" | "played" | "ended";
+type PlayerState =
+  | "preflight"
+  | "ready"
+  | "intro"
+  | "introPlayed"
+  | "traveling"
+  | "approaching"
+  | "armed"
+  | "playing"
+  | "played"
+  | "outro"
+  | "outroPlayed"
+  | "ended";
 type LocationMode = "unknown" | "watching" | "manual" | "denied";
 type NarrationPlayback = "idle" | "playing" | "paused";
-const activeDriveStates: PlayerState[] = ["traveling", "approaching", "armed", "playing", "played"];
+const activeDriveStates: PlayerState[] = ["intro", "introPlayed", "traveling", "approaching", "armed", "playing", "played", "outro", "outroPlayed"];
 const resumeStorageKey = "dark-drives:route-session";
 const welcomeSeenStorageKey = "dark-drives:welcome-seen";
 
@@ -105,20 +117,29 @@ function approachProgress(distanceMeters: number, approachRadiusM: number, arriv
 function stateCopy(playerState: PlayerState) {
   if (playerState === "preflight") return "Files sealed";
   if (playerState === "ready") return "Ready";
+  if (playerState === "intro") return "Opening signal";
+  if (playerState === "introPlayed") return "Opening heard";
   if (playerState === "traveling") return "The road is quiet";
   if (playerState === "approaching") return "Something is close";
   if (playerState === "armed") return "It's here";
   if (playerState === "playing") return "Listen";
   if (playerState === "played") return "File open";
+  if (playerState === "outro") return "Final signal";
+  if (playerState === "outroPlayed") return "Final heard";
   return "Route closed";
 }
 
 function presenceCopy(playerState: PlayerState, distanceMeters: number | null, narrationPlayback: NarrationPlayback) {
+  if ((playerState === "intro" || playerState === "outro") && narrationPlayback === "paused") return "Signal held";
+  if (playerState === "intro") return "Signal active";
+  if (playerState === "introPlayed") return "Opening heard";
   if (playerState === "approaching" && distanceMeters !== null) return `${distanceMeters.toLocaleString()}m`;
   if (playerState === "armed") return "It found the car";
   if (playerState === "playing" && narrationPlayback === "paused") return "Signal held";
   if (playerState === "playing") return "Signal active";
   if (playerState === "played") return "The file is open";
+  if (playerState === "outro") return "Signal active";
+  if (playerState === "outroPlayed") return "Final heard";
   if (playerState === "traveling") return "Nothing on the glass";
   return "Waiting";
 }
@@ -425,6 +446,14 @@ export function RoutePlayer() {
     if (!route) return { label: "Loading Route", disabled: true, className: "" };
     if (playerState === "preflight") return { label: "Prepare Route", disabled: false, className: "" };
     if (playerState === "ready") return { label: "Begin Drive", disabled: false, className: "ready" };
+    if (playerState === "intro" || playerState === "outro") {
+      return {
+        label: narrationPlayback === "paused" ? "Resume" : "Pause",
+        disabled: false,
+        className: narrationPlayback === "paused" ? "paused" : "playing"
+      };
+    }
+    if (playerState === "introPlayed" || playerState === "outroPlayed") return { label: "Replay", disabled: false, className: "replay" };
     if (playerState === "traveling") return { label: "Keep Driving", disabled: true, className: "" };
     if (playerState === "approaching") return { label: "Something Is Close", disabled: true, className: "approaching" };
     if (playerState === "armed") return { label: "Wake It", disabled: false, className: "ready" };
@@ -508,7 +537,7 @@ export function RoutePlayer() {
       return;
     }
 
-    if (playerState === "preflight" || playerState === "ready") {
+    if (playerState === "preflight" || playerState === "ready" || playerState === "intro" || playerState === "introPlayed") {
       return;
     }
 
@@ -603,7 +632,17 @@ export function RoutePlayer() {
   }, [ambientUrl, currentStop, isForeground, playerState]);
 
   useEffect(() => {
-    if (playerState !== "traveling" && playerState !== "approaching" && playerState !== "armed" && playerState !== "playing" && playerState !== "played") {
+    if (
+      playerState !== "intro" &&
+      playerState !== "introPlayed" &&
+      playerState !== "traveling" &&
+      playerState !== "approaching" &&
+      playerState !== "armed" &&
+      playerState !== "playing" &&
+      playerState !== "played" &&
+      playerState !== "outro" &&
+      playerState !== "outroPlayed"
+    ) {
       return;
     }
 
@@ -664,12 +703,17 @@ export function RoutePlayer() {
       }
       await wakeLock.current.request().catch(() => undefined);
       setWakeStatus(wakeLock.current.supported ? "Active" : "Unsupported");
-      await audioEngine.current?.startAmbient(ambientUrl);
-      audioEngine.current?.setAmbientVolume(0.2);
-      setNarrationPlayback("playing");
-      await audioEngine.current?.playNarration(route.introAudio);
-      setNarrationPlayback("idle");
-      setPlayerState("traveling");
+      await playRouteIntro();
+      return;
+    }
+
+    if (playerState === "intro" || playerState === "outro") {
+      toggleNarrationPause();
+      return;
+    }
+
+    if (playerState === "introPlayed") {
+      await playRouteIntro();
       return;
     }
 
@@ -679,20 +723,90 @@ export function RoutePlayer() {
     }
 
     if (playerState === "playing") {
-      if (narrationPlayback === "paused") {
-        if (audioEngine.current?.resumeNarration()) {
-          setNarrationPlayback("playing");
-        }
-      } else if (audioEngine.current?.pauseNarration()) {
-        setNarrationPlayback("paused");
-      }
+      toggleNarrationPause();
       return;
     }
 
     if (playerState === "played") {
       setRitualMessage("");
       await playCurrentStopNarration();
+      return;
     }
+
+    if (playerState === "outroPlayed") {
+      await playRouteOutro();
+    }
+  }
+
+  function toggleNarrationPause() {
+    if (narrationPlayback === "paused") {
+      if (audioEngine.current?.resumeNarration()) {
+        setNarrationPlayback("playing");
+      }
+    } else if (audioEngine.current?.pauseNarration()) {
+      setNarrationPlayback("paused");
+    }
+  }
+
+  async function playRouteIntro() {
+    if (!route) {
+      return;
+    }
+
+    const token = playbackToken.current;
+    await audioEngine.current?.startAmbient(ambientUrl);
+    audioEngine.current?.setAmbientVolume(0.2);
+    setPlayerState("intro");
+    setNarrationPlayback("playing");
+    await audioEngine.current?.playNarration(route.introAudio);
+    if (token !== playbackToken.current) {
+      return;
+    }
+    setNarrationPlayback("idle");
+    setPlayerState("introPlayed");
+  }
+
+  function enterDriveAfterIntro() {
+    playbackToken.current += 1;
+    audioEngine.current?.stopNarration();
+    setNarrationPlayback("idle");
+    setPlayerState("traveling");
+    void audioEngine.current?.startAmbient(ambientUrl);
+    audioEngine.current?.setAmbientVolume(0.2);
+  }
+
+  function skipRouteIntro() {
+    enterDriveAfterIntro();
+  }
+
+  async function playRouteOutro() {
+    if (!route) {
+      return;
+    }
+
+    const token = playbackToken.current;
+    setPlayerState("outro");
+    await audioEngine.current?.startAmbient(ambientUrl);
+    audioEngine.current?.setAmbientVolume(0.2);
+    setNarrationPlayback("playing");
+    await audioEngine.current?.playNarration(route.outroAudio);
+    if (token !== playbackToken.current) {
+      return;
+    }
+    setNarrationPlayback("idle");
+    setPlayerState("outroPlayed");
+  }
+
+  async function closeRouteAfterOutro() {
+    if (selectedLoop) {
+      setCompletedLoopIds((ids) => (ids.includes(selectedLoop.id) ? ids : [...ids, selectedLoop.id]));
+    }
+    playbackToken.current += 1;
+    audioEngine.current?.stopAll();
+    await wakeLock.current.release();
+    setWakeStatus("Released");
+    setNarrationPlayback("idle");
+    setPlayerState("ended");
   }
 
   async function advanceAfterPlayed() {
@@ -701,17 +815,7 @@ export function RoutePlayer() {
     }
 
     if (activeStopIndex === activeStops.length - 1) {
-      setPlayerState("playing");
-      setNarrationPlayback("playing");
-      await audioEngine.current?.playNarration(route.outroAudio);
-      setNarrationPlayback("idle");
-      audioEngine.current?.stopAll();
-      await wakeLock.current.release();
-      setWakeStatus("Released");
-      if (selectedLoop) {
-        setCompletedLoopIds((ids) => (ids.includes(selectedLoop.id) ? ids : [...ids, selectedLoop.id]));
-      }
-      setPlayerState("ended");
+      await playRouteOutro();
       return;
     }
 
@@ -1325,11 +1429,23 @@ export function RoutePlayer() {
             </button>
             {!isPreDrive && (
               <>
-                {playerState === "played" ? (
+                {playerState === "intro" ? (
+                  <button className="secondary" onClick={skipRouteIntro}>
+                    Skip Intro
+                  </button>
+                ) : playerState === "introPlayed" ? (
+                  <button className="secondary" onClick={enterDriveAfterIntro}>
+                    Start Drive
+                  </button>
+                ) : playerState === "played" ? (
                   <button className="secondary" onClick={() => void advanceAfterPlayed()}>
                     {activeStopIndex === activeStops.length - 1 ? "Close Route" : "Next File"}
                   </button>
-                ) : (
+                ) : playerState === "outroPlayed" ? (
+                  <button className="secondary" onClick={() => void closeRouteAfterOutro()}>
+                    Close Route
+                  </button>
+                ) : playerState === "outro" ? null : (
                   <>
                     <button className="secondary" onClick={() => void armManually()} disabled={!canArmManually}>
                       I&apos;m Here
