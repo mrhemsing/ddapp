@@ -9,6 +9,20 @@ import type { RoutePack } from "@/lib/route-data";
 export const runtime = "nodejs";
 
 const localRoutePackPath = path.join(process.cwd(), "private", "dark-drives-route-pack.json");
+const routeSignalAudioVersion = "route-signal-20260630-v2";
+
+function versionAudioUrl(url: string) {
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}v=${routeSignalAudioVersion}`;
+}
+
+function withRouteSignalAudioVersion(route: RoutePack): RoutePack {
+  return {
+    ...route,
+    introAudio: versionAudioUrl(route.introAudio),
+    outroAudio: versionAudioUrl(route.outroAudio)
+  };
+}
 
 async function loadLocalRoutePack() {
   try {
@@ -38,7 +52,7 @@ async function loadPrivateRoutePack() {
 export async function GET() {
   if (process.env.NODE_ENV !== "production") {
     const routePack = await loadPrivateRoutePack();
-    return NextResponse.json(routePack ?? fakeRoute);
+    return NextResponse.json(withRouteSignalAudioVersion(routePack ?? fakeRoute));
   }
 
   const session = await getCurrentSession();
@@ -61,7 +75,7 @@ export async function GET() {
   const routePack = await loadPrivateRoutePack();
 
   if (routePack) {
-    return NextResponse.json(routePack);
+    return NextResponse.json(withRouteSignalAudioVersion(routePack));
   }
 
   return NextResponse.json(
