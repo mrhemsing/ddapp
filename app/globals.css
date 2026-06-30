@@ -474,6 +474,9 @@ button {
 }
 
 .location-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   width: fit-content;
   border: 0;
   background: transparent;
@@ -490,6 +493,34 @@ button {
 .location-link:disabled {
   color: var(--bone-dim);
   cursor: wait;
+}
+
+.location-link[data-locating="true"] {
+  color: var(--sick);
+}
+
+.location-link-icon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  color: currentColor;
+  stroke-width: 2.4;
+}
+
+.location-link[data-locating="true"] .location-link-icon {
+  animation: locate-pulse 900ms ease-in-out infinite;
+}
+
+@keyframes locate-pulse {
+  0%,
+  100% {
+    opacity: 0.56;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
 }
 
 .welcome-loop-card {

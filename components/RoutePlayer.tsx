@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Navigation, Play } from "lucide-react";
+import { LocateFixed, Navigation, Play } from "lucide-react";
 import { cacheRouteAudio, isRouteCached, type CacheProgress } from "@/lib/audio-cache";
 import { DarkDrivesAudioEngine } from "@/lib/audio-engine";
 import type { PlaybackProgress } from "@/lib/audio-engine";
@@ -1605,11 +1605,13 @@ export function RoutePlayer() {
               <div className="closest-loop-row">
                 <button
                   className="location-link"
+                  data-locating={welcomeLocationStatus === "requesting"}
                   disabled={welcomeLocationStatus === "requesting"}
                   onClick={requestWelcomeLocation}
                   type="button"
                 >
-                  {welcomeLocationStatus === "requesting" ? "Checking your closest loop..." : "Show me the closest loop"}
+                  <LocateFixed className="location-link-icon" aria-hidden="true" />
+                  <span>{welcomeLocationStatus === "requesting" ? "Checking your closest loop..." : "Show me the closest loop"}</span>
                 </button>
                 {welcomeLocationStatus === "enabled" && <span>Approximate distance to each first stop.</span>}
                 {welcomeLocationStatus === "denied" && <span>Location skipped. The start areas below still work.</span>}
