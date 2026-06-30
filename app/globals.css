@@ -697,6 +697,21 @@ button {
   color: var(--sick);
 }
 
+.directions-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.directions-icon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  color: currentColor;
+  stroke-width: 2.4;
+}
+
 .secondary:disabled,
 .small-button:disabled {
   cursor: default;

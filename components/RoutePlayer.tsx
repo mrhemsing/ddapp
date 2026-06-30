@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Navigation } from "lucide-react";
 import { cacheRouteAudio, isRouteCached, type CacheProgress } from "@/lib/audio-cache";
 import { DarkDrivesAudioEngine } from "@/lib/audio-engine";
 import type { PlaybackProgress } from "@/lib/audio-engine";
@@ -1746,8 +1747,9 @@ export function RoutePlayer() {
           </div>
 
           <div className="secondary-row">
-            <button className="secondary" onClick={() => window.open(mapsUrl(currentStop), "_blank", "noopener,noreferrer")}>
-              Drive There
+            <button className="secondary directions-button" onClick={() => window.open(mapsUrl(currentStop), "_blank", "noopener,noreferrer")}>
+              <Navigation className="directions-icon" aria-hidden="true" />
+              <span>Directions</span>
             </button>
             <button
               aria-label={isPrepared ? "Stops" : "Stops locked, prepare first"}
