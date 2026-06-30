@@ -24,7 +24,7 @@ type LocationMode = "unknown" | "watching" | "manual" | "denied";
 type NarrationPlayback = "idle" | "playing" | "paused";
 type RitualPlayback = "idle" | "playing" | "played";
 const ROUTE_NARRATION_VOLUME = 1.45;
-const activeDriveStates: PlayerState[] = ["intro", "introPlayed", "traveling", "approaching", "armed", "playing", "played", "outro", "outroPlayed"];
+const activeDriveStates: PlayerState[] = ["intro", "traveling", "approaching", "armed", "playing", "played", "outro", "outroPlayed"];
 const resumeStorageKey = "dark-drives:route-session";
 const welcomeSeenStorageKey = "dark-drives:welcome-seen";
 
@@ -121,7 +121,7 @@ function stateCopy(playerState: PlayerState) {
   if (playerState === "preflight") return "Files sealed";
   if (playerState === "ready") return "Ready";
   if (playerState === "intro") return "Opening signal";
-  if (playerState === "introPlayed") return "Opening heard";
+  if (playerState === "introPlayed") return "Ready";
   if (playerState === "traveling") return "The road is quiet";
   if (playerState === "approaching") return "Something is close";
   if (playerState === "armed") return "It's here";
@@ -135,7 +135,7 @@ function stateCopy(playerState: PlayerState) {
 function presenceCopy(playerState: PlayerState, distanceMeters: number | null, narrationPlayback: NarrationPlayback) {
   if ((playerState === "intro" || playerState === "outro") && narrationPlayback === "paused") return "Signal held";
   if (playerState === "intro") return "Signal active";
-  if (playerState === "introPlayed") return "Opening heard";
+  if (playerState === "introPlayed") return "Waiting";
   if (playerState === "approaching" && distanceMeters !== null) return `${distanceMeters.toLocaleString()}m`;
   if (playerState === "armed") return "It found the car";
   if (playerState === "playing" && narrationPlayback === "paused") return "Signal held";
@@ -163,15 +163,27 @@ function PlaybackSignal({
   paused = false,
   progress,
   variant = "drive",
-  bars = 24
+  bars = 24,
+  onSeek
 }: {
   label: string;
   paused?: boolean;
   progress: PlaybackProgress | null;
   variant?: "drive" | "ritual";
   bars?: number;
+  onSeek?: (position: number) => void;
 }) {
   const percent = progress?.percent ?? 0;
+  const seekFromPointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!progress || !onSeek) {
+      return;
+    }
+
+    const track = event.currentTarget;
+    const rect = track.getBoundingClientRect();
+    const nextPercent = clamp((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1);
+    onSeek(nextPercent * progress.duration);
+  };
 
   return (
     <div className={`playback-signal ${variant === "ritual" ? "ritual-playback" : "drive-playback"}`} data-paused={paused}>
@@ -180,7 +192,32 @@ function PlaybackSignal({
           <span key={index} style={{ height: `${variant === "ritual" ? 26 + ((index * 23) % 68) : 22 + ((index * 19) % 74)}%` }} />
         ))}
       </div>
-      <div className="playback-progress" aria-label={`${label} progress`}>
+      <div
+        className="playback-progress"
+        role={onSeek ? "slider" : undefined}
+        aria-label={`${label} progress`}
+        aria-valuemin={onSeek ? 0 : undefined}
+        aria-valuemax={onSeek && progress ? Math.round(progress.duration) : undefined}
+        aria-valuenow={onSeek && progress ? Math.round(progress.position) : undefined}
+        tabIndex={onSeek ? 0 : undefined}
+        onPointerDown={seekFromPointer}
+        onPointerMove={(event) => {
+          if (event.buttons === 1) {
+            seekFromPointer(event);
+          }
+        }}
+        onKeyDown={(event) => {
+          if (!progress || !onSeek) {
+            return;
+          }
+
+          if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            event.preventDefault();
+            const delta = event.key === "ArrowRight" ? 5 : -5;
+            onSeek(clamp(progress.position + delta, 0, progress.duration));
+          }
+        }}
+      >
         <div style={{ width: `${percent}%` }} />
       </div>
       {paused && progress && (
@@ -366,7 +403,7 @@ export function RoutePlayer() {
     return new Map(legs.map((leg) => [`${leg.fromStopId}->${leg.toStopId}`, leg]));
   }, [selectedLoop]);
   const isDriveActive = activeDriveStates.includes(playerState);
-  const isPreDrive = playerState === "preflight" || playerState === "ready";
+  const isPreDrive = playerState === "preflight" || playerState === "ready" || playerState === "introPlayed";
   const isChoosingLoop = Boolean(route && hasCheckedResume && routeHasLoops && !selectedLoop && isPreDrive && !resumeState);
   const heartbeatMs = Math.round(2200 - approachIntensity * 1500);
   const stats = recapStats(sessionEvents);
@@ -496,7 +533,7 @@ export function RoutePlayer() {
   const primary = useMemo(() => {
     if (!route) return { label: "Loading Route", disabled: true, className: "" };
     if (playerState === "preflight") return { label: "Prepare Route", disabled: false, className: "" };
-    if (playerState === "ready") return { label: "Begin Drive", disabled: false, className: "ready" };
+    if (playerState === "ready") return { label: "Opening Signal", disabled: false, className: "ready" };
     if (playerState === "intro" || playerState === "outro") {
       return {
         label: narrationPlayback === "paused" ? "Resume" : "Pause",
@@ -504,7 +541,8 @@ export function RoutePlayer() {
         className: narrationPlayback === "paused" ? "paused" : "playing"
       };
     }
-    if (playerState === "introPlayed" || playerState === "outroPlayed") return { label: "Replay", disabled: false, className: "replay" };
+    if (playerState === "introPlayed") return { label: "Begin Drive", disabled: false, className: "ready" };
+    if (playerState === "outroPlayed") return { label: "Replay", disabled: false, className: "replay" };
     if (playerState === "traveling") return { label: "Keep Driving", disabled: true, className: "" };
     if (playerState === "approaching") return { label: "Something Is Close", disabled: true, className: "approaching" };
     if (playerState === "armed") return { label: "Wake It", disabled: false, className: "ready" };
@@ -755,27 +793,6 @@ export function RoutePlayer() {
     if (playerState === "ready") {
       await audioEngine.current?.unlock();
       setAudioStatus("Unlocked");
-      if ("geolocation" in navigator) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const current = {
-              lat: position.coords.latitude,
-              lng: position.coords.longitude,
-              speedMps: position.coords.speed,
-              timestamp: position.timestamp
-            };
-            lastPositionFix.current = current;
-            setCurrentPosition(current);
-            setLocationMode("watching");
-          },
-          () => setLocationMode("denied"),
-          { enableHighAccuracy: true, maximumAge: 4000, timeout: 10000 }
-        );
-      } else {
-        setLocationMode("manual");
-      }
-      await wakeLock.current.request().catch(() => undefined);
-      setWakeStatus(wakeLock.current.supported ? "Active" : "Unsupported");
       await playRouteIntro();
       return;
     }
@@ -786,7 +803,7 @@ export function RoutePlayer() {
     }
 
     if (playerState === "introPlayed") {
-      await playRouteIntro();
+      await beginDrive();
       return;
     }
 
@@ -820,12 +837,56 @@ export function RoutePlayer() {
     }
   }
 
+  function seekNarration(position: number) {
+    if (audioEngine.current?.seekNarration(position)) {
+      setNarrationProgress(audioEngine.current.getNarrationProgress());
+    }
+  }
+
   function resetRitualCue() {
     ritualPlaybackToken.current += 1;
     audioEngine.current?.stopEffects();
     setRitualPlayback("idle");
     setRitualProgress(null);
     setActiveRitualId(null);
+  }
+
+  async function beginDrive() {
+    if (!currentStop) {
+      return;
+    }
+
+    playbackToken.current += 1;
+    audioEngine.current?.stopNarration();
+    resetRitualCue();
+    setNarrationPlayback("idle");
+    setNarrationProgress(null);
+
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const current = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            speedMps: position.coords.speed,
+            timestamp: position.timestamp
+          };
+          lastPositionFix.current = current;
+          setCurrentPosition(current);
+          setLocationMode("watching");
+        },
+        () => setLocationMode("denied"),
+        { enableHighAccuracy: true, maximumAge: 4000, timeout: 10000 }
+      );
+    } else {
+      setLocationMode("manual");
+    }
+
+    setPlayerState("traveling");
+    void wakeLock.current
+      .request()
+      .then(() => setWakeStatus(wakeLock.current.supported ? "Active" : "Unsupported"))
+      .catch(() => setWakeStatus("Unsupported"));
   }
 
   async function playRouteIntro() {
@@ -842,24 +903,23 @@ export function RoutePlayer() {
     if (token !== playbackToken.current) {
       return;
     }
+    audioEngine.current?.stopAll();
     setNarrationPlayback("idle");
     setNarrationProgress(null);
     setPlayerState("introPlayed");
   }
 
-  function enterDriveAfterIntro() {
+  function completeOpeningSignal() {
     playbackToken.current += 1;
-    audioEngine.current?.stopNarration();
+    audioEngine.current?.stopAll();
     resetRitualCue();
     setNarrationPlayback("idle");
     setNarrationProgress(null);
-    setPlayerState("traveling");
-    void audioEngine.current?.startAmbient(ambientUrl);
-    audioEngine.current?.setAmbientVolume(0.2);
+    setPlayerState("introPlayed");
   }
 
   function skipRouteIntro() {
-    enterDriveAfterIntro();
+    completeOpeningSignal();
   }
 
   async function playRouteOutro() {
@@ -1528,9 +1588,24 @@ export function RoutePlayer() {
             </div>
           </div>
 
-          <button className={`primary ${primary.className}`} disabled={primary.disabled} onClick={handlePrimary}>
-            {primary.label}
-          </button>
+          <div className="transport-cluster">
+            <button className={`primary ${primary.className}`} disabled={primary.disabled} onClick={handlePrimary}>
+              {primary.label}
+            </button>
+            {isDriveActive && narrationPlayback !== "idle" && (
+              <PlaybackSignal
+                label="Narration signal"
+                paused={narrationPlayback === "paused"}
+                progress={narrationProgress}
+                onSeek={seekNarration}
+              />
+            )}
+            {playerState === "intro" && (
+              <button className="transport-secondary" onClick={skipRouteIntro}>
+                Skip Intro
+              </button>
+            )}
+          </div>
 
           <div className="secondary-row">
             <button className="secondary" onClick={() => window.open(mapsUrl(currentStop), "_blank", "noopener,noreferrer")}>
@@ -1541,15 +1616,7 @@ export function RoutePlayer() {
             </button>
             {!isPreDrive && (
               <>
-                {playerState === "intro" ? (
-                  <button className="secondary" onClick={skipRouteIntro}>
-                    Skip Intro
-                  </button>
-                ) : playerState === "introPlayed" ? (
-                  <button className="secondary" onClick={enterDriveAfterIntro}>
-                    Start Drive
-                  </button>
-                ) : playerState === "played" ? (
+                {playerState === "intro" ? null : playerState === "played" ? (
                   <>
                     <button className="secondary" onClick={() => void advanceAfterPlayed()}>
                       {activeStopIndex === activeStops.length - 1 ? "Close Route" : "Next File"}
@@ -1668,10 +1735,6 @@ export function RoutePlayer() {
                 );
               })}
             </div>
-          )}
-
-          {isDriveActive && narrationPlayback !== "idle" && (
-            <PlaybackSignal label="Narration signal" paused={narrationPlayback === "paused"} progress={narrationProgress} />
           )}
 
           {playerState !== "preflight" && (

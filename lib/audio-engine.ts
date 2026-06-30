@@ -128,6 +128,28 @@ export class DarkDrivesAudioEngine {
     return true;
   }
 
+  seekNarration(position: number) {
+    if (!this.context || !this.activeNarration) {
+      return false;
+    }
+
+    const narration = this.activeNarration;
+    narration.offset = Math.min(Math.max(position, 0), Math.max(narration.buffer.duration - 0.01, 0));
+
+    if (narration.stopReason === "pause") {
+      return true;
+    }
+
+    narration.stopReason = "stop";
+    try {
+      narration.source.stop();
+    } catch {
+      // Source may already be stopped.
+    }
+    this.startNarrationSource(narration);
+    return true;
+  }
+
   stopNarration() {
     if (!this.activeNarration) {
       return;
