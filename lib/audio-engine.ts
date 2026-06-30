@@ -10,6 +10,16 @@ type ActiveNarration = {
   resolve: () => void;
   stopReason: "natural" | "pause" | "stop" | null;
 };
+type ActiveOneShot = {
+  source: AudioBufferSourceNode;
+  buffer: AudioBuffer;
+  startedAt: number;
+};
+export type PlaybackProgress = {
+  position: number;
+  duration: number;
+  percent: number;
+};
 
 export class DarkDrivesAudioEngine {
   private context: AudioContext | null = null;
@@ -17,7 +27,7 @@ export class DarkDrivesAudioEngine {
   private ambientGain: GainNode | null = null;
   private ambientSource: ActiveSource = null;
   private activeNarration: ActiveNarration | null = null;
-  private activeOneShots = new Set<AudioBufferSourceNode>();
+  private activeOneShots = new Map<AudioBufferSourceNode, ActiveOneShot>();
   private bufferCache = new Map<string, AudioBuffer>();
 
   get isUnlocked() {
@@ -129,6 +139,33 @@ export class DarkDrivesAudioEngine {
     narration.resolve();
   }
 
+  getNarrationProgress(): PlaybackProgress | null {
+    if (!this.context || !this.activeNarration) {
+      return null;
+    }
+
+    const narration = this.activeNarration;
+    const position =
+      narration.stopReason === "pause"
+        ? narration.offset
+        : Math.min(narration.offset + (this.context.currentTime - narration.startedAt), narration.buffer.duration);
+
+    return this.progressFrom(position, narration.buffer.duration);
+  }
+
+  getEffectProgress(): PlaybackProgress | null {
+    if (!this.context || this.activeOneShots.size === 0) {
+      return null;
+    }
+
+    const active = [...this.activeOneShots.values()].at(-1);
+    if (!active) {
+      return null;
+    }
+
+    return this.progressFrom(this.context.currentTime - active.startedAt, active.buffer.duration);
+  }
+
   async playEffect(url: string, volume = 0.38) {
     return this.playOneShot(url, { volume, duckAmbient: false });
   }
@@ -151,7 +188,7 @@ export class DarkDrivesAudioEngine {
     const source = context.createBufferSource();
     source.buffer = buffer;
     source.connect(narrationGain);
-    this.activeOneShots.add(source);
+    this.activeOneShots.set(source, { source, buffer, startedAt: context.currentTime });
     narrationGain.gain.setValueAtTime(0.0001, context.currentTime);
     narrationGain.gain.exponentialRampToValueAtTime(Math.min(Math.max(volume, 0.0001), 1), context.currentTime + 0.05);
 
@@ -176,7 +213,7 @@ export class DarkDrivesAudioEngine {
   }
 
   stopEffects() {
-    for (const source of this.activeOneShots) {
+    for (const source of this.activeOneShots.keys()) {
       try {
         source.stop();
       } catch {
@@ -243,6 +280,16 @@ export class DarkDrivesAudioEngine {
     const buffer = await context.decodeAudioData(arrayBuffer.slice(0));
     this.bufferCache.set(url, buffer);
     return buffer;
+  }
+
+  private progressFrom(position: number, duration: number): PlaybackProgress {
+    const safeDuration = Math.max(duration, 0.01);
+    const safePosition = Math.min(Math.max(position, 0), safeDuration);
+    return {
+      position: safePosition,
+      duration: safeDuration,
+      percent: Math.round((safePosition / safeDuration) * 1000) / 10
+    };
   }
 
   private startNarrationSource(narration: Omit<ActiveNarration, "source" | "startedAt" | "stopReason"> | ActiveNarration) {

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cacheRouteAudio, isRouteCached, type CacheProgress } from "@/lib/audio-cache";
 import { DarkDrivesAudioEngine } from "@/lib/audio-engine";
+import type { PlaybackProgress } from "@/lib/audio-engine";
 import type { RoutePack, Stop } from "@/lib/route-data";
 import { createWakeLockHandle } from "@/lib/wake-lock";
 
@@ -149,6 +150,47 @@ function localTime(timestamp: string) {
   return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(timestamp));
 }
 
+function formatClipTime(seconds: number) {
+  const rounded = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(rounded / 60);
+  const remainder = String(rounded % 60).padStart(2, "0");
+  return `${minutes}:${remainder}`;
+}
+
+function PlaybackSignal({
+  label,
+  paused = false,
+  progress,
+  variant = "drive",
+  bars = 24
+}: {
+  label: string;
+  paused?: boolean;
+  progress: PlaybackProgress | null;
+  variant?: "drive" | "ritual";
+  bars?: number;
+}) {
+  const percent = progress?.percent ?? 0;
+
+  return (
+    <div className={`playback-signal ${variant === "ritual" ? "ritual-playback" : "drive-playback"}`} data-paused={paused}>
+      <div className={`signal-meter ${variant === "ritual" ? "ritual-signal" : "drive-signal"}`} data-paused={paused} aria-label={label}>
+        {Array.from({ length: bars }, (_, index) => (
+          <span key={index} style={{ height: `${variant === "ritual" ? 26 + ((index * 23) % 68) : 22 + ((index * 19) % 74)}%` }} />
+        ))}
+      </div>
+      <div className="playback-progress" aria-label={`${label} progress`}>
+        <div style={{ width: `${percent}%` }} />
+      </div>
+      {paused && progress && (
+        <div className="playback-time">
+          {formatClipTime(progress.position)} / {formatClipTime(progress.duration)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function loopHref(loopId: string) {
   return `/?loop=${encodeURIComponent(loopId)}`;
 }
@@ -276,6 +318,8 @@ export function RoutePlayer() {
   const [wakeStatus, setWakeStatus] = useState("Not requested");
   const [narrationPlayback, setNarrationPlayback] = useState<NarrationPlayback>("idle");
   const [ritualPlayback, setRitualPlayback] = useState<RitualPlayback>("idle");
+  const [narrationProgress, setNarrationProgress] = useState<PlaybackProgress | null>(null);
+  const [ritualProgress, setRitualProgress] = useState<PlaybackProgress | null>(null);
   const [activeRitualId, setActiveRitualId] = useState<string | null>(null);
   const [isForeground, setIsForeground] = useState(true);
   const [ritualMessage, setRitualMessage] = useState("");
@@ -565,6 +609,24 @@ export function RoutePlayer() {
   }, []);
 
   useEffect(() => {
+    if (narrationPlayback === "idle" && ritualPlayback !== "playing") {
+      setNarrationProgress(null);
+      setRitualProgress(null);
+      return;
+    }
+
+    let frameId = 0;
+    const update = () => {
+      setNarrationProgress(narrationPlayback === "idle" ? null : audioEngine.current?.getNarrationProgress() ?? null);
+      setRitualProgress(ritualPlayback === "playing" ? audioEngine.current?.getEffectProgress() ?? null : null);
+      frameId = window.requestAnimationFrame(update);
+    };
+
+    update();
+    return () => window.cancelAnimationFrame(frameId);
+  }, [narrationPlayback, ritualPlayback]);
+
+  useEffect(() => {
     if (!route || !currentStop || !isForeground || (playerState !== "traveling" && playerState !== "approaching" && playerState !== "armed")) {
       return;
     }
@@ -756,6 +818,7 @@ export function RoutePlayer() {
     ritualPlaybackToken.current += 1;
     audioEngine.current?.stopEffects();
     setRitualPlayback("idle");
+    setRitualProgress(null);
     setActiveRitualId(null);
   }
 
@@ -774,6 +837,7 @@ export function RoutePlayer() {
       return;
     }
     setNarrationPlayback("idle");
+    setNarrationProgress(null);
     setPlayerState("introPlayed");
   }
 
@@ -782,6 +846,7 @@ export function RoutePlayer() {
     audioEngine.current?.stopNarration();
     resetRitualCue();
     setNarrationPlayback("idle");
+    setNarrationProgress(null);
     setPlayerState("traveling");
     void audioEngine.current?.startAmbient(ambientUrl);
     audioEngine.current?.setAmbientVolume(0.2);
@@ -806,6 +871,7 @@ export function RoutePlayer() {
       return;
     }
     setNarrationPlayback("idle");
+    setNarrationProgress(null);
     setPlayerState("outroPlayed");
   }
 
@@ -819,6 +885,7 @@ export function RoutePlayer() {
     await wakeLock.current.release();
     setWakeStatus("Released");
     setNarrationPlayback("idle");
+    setNarrationProgress(null);
     setPlayerState("ended");
   }
 
@@ -845,6 +912,7 @@ export function RoutePlayer() {
       setNarrationPlayback("playing");
       await audioEngine.current?.playNarration(legAudio);
       setNarrationPlayback("idle");
+      setNarrationProgress(null);
     }
   }
 
@@ -863,6 +931,7 @@ export function RoutePlayer() {
       return;
     }
     setNarrationPlayback("idle");
+    setNarrationProgress(null);
     setSessionEvents((events) => {
       if (events.some((event) => event.type === "stopCompleted" && event.stopId === currentStop.id)) {
         return events;
@@ -896,6 +965,7 @@ export function RoutePlayer() {
     audioEngine.current?.stopOneShots();
     resetRitualCue();
     setNarrationPlayback("idle");
+    setNarrationProgress(null);
     setActiveStopIndex(nextIndex);
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
@@ -1083,6 +1153,7 @@ export function RoutePlayer() {
     await wakeLock.current.release();
     setWakeStatus("Released");
     setNarrationPlayback("idle");
+    setNarrationProgress(null);
     setSelectedLoopId(null);
     setIsLoopPickerOpen(false);
     setActiveStopIndex(0);
@@ -1188,8 +1259,10 @@ export function RoutePlayer() {
         return;
       }
       setRitualPlayback("played");
+      setRitualProgress(null);
     } else {
       setRitualPlayback("played");
+      setRitualProgress(null);
     }
     const payoffFired = Boolean(ritual.payoff && Math.random() <= ritual.payoff.probability);
 
@@ -1553,7 +1626,12 @@ export function RoutePlayer() {
                     : `${hasPlayed ? "Replay" : ritual.cueAudio ? "Play" : "Perform"} ${ritualLabel}`;
 
                 return (
-                  <div className="ritual-action" data-armed={isArmed} key={ritual.id}>
+                  <div
+                    className="ritual-action"
+                    data-armed={isArmed}
+                    data-anticipating={!isArmed && playerState === "playing" && (narrationProgress?.percent ?? 0) >= 85}
+                    key={ritual.id}
+                  >
                     <button
                       className="ritual-button"
                       disabled={!isArmed}
@@ -1563,11 +1641,7 @@ export function RoutePlayer() {
                     </button>
                     <p>{ritual.instructionText}</p>
                     {isActive && (
-                      <div className="signal-meter ritual-signal" aria-label={`${ritual.label} signal`}>
-                        {Array.from({ length: 18 }, (_, index) => (
-                          <span key={index} style={{ height: `${26 + ((index * 23) % 68)}%` }} />
-                        ))}
-                      </div>
+                      <PlaybackSignal label={`${ritual.label} signal`} progress={ritualProgress} variant="ritual" bars={18} />
                     )}
                   </div>
                 );
@@ -1577,11 +1651,7 @@ export function RoutePlayer() {
           )}
 
           {isDriveActive && narrationPlayback !== "idle" && (
-            <div className="signal-meter drive-signal" data-paused={narrationPlayback === "paused"} aria-label="Narration signal">
-              {Array.from({ length: 24 }, (_, index) => (
-                <span key={index} style={{ height: `${22 + ((index * 19) % 74)}%` }} />
-              ))}
-            </div>
+            <PlaybackSignal label="Narration signal" paused={narrationPlayback === "paused"} progress={narrationProgress} />
           )}
 
           {playerState !== "preflight" && (

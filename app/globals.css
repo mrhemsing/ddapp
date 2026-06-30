@@ -566,6 +566,10 @@ button {
   opacity: 1;
 }
 
+.ritual-action[data-anticipating="true"] {
+  opacity: 0.72;
+}
+
 .ritual-button {
   min-height: 56px;
   border: 1px solid var(--blood-dim);
@@ -606,6 +610,42 @@ button {
   height: 28px;
   border-color: rgba(179, 0, 15, 0.34);
   background: rgba(75, 5, 7, 0.24);
+}
+
+.playback-signal {
+  display: grid;
+  gap: 6px;
+}
+
+.playback-progress {
+  height: 4px;
+  overflow: hidden;
+  border: 1px solid rgba(114, 255, 87, 0.12);
+  border-radius: 999px;
+  background: rgba(230, 225, 214, 0.07);
+}
+
+.playback-progress > div {
+  height: 100%;
+  border-radius: inherit;
+  background: rgba(114, 255, 87, 0.72);
+  transition: width 120ms linear;
+}
+
+.ritual-playback .playback-progress {
+  border-color: rgba(179, 0, 15, 0.24);
+}
+
+.ritual-playback .playback-progress > div {
+  background: rgba(179, 0, 15, 0.78);
+}
+
+.playback-time {
+  color: var(--ash);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-align: right;
 }
 
 .panel {
