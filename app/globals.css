@@ -273,14 +273,23 @@ button {
   animation: presencePulse var(--heartbeat-ms, 2000ms) ease-in-out infinite;
 }
 
-.presence[data-state="approaching"] .presence-dot,
-.presence[data-state="armed"] .presence-dot {
+.presence[data-state="arrived"] .presence-dot,
+.presence[data-state="signal-active"] .presence-dot,
+.presence[data-state="paused"] .presence-dot,
+.presence[data-state="complete"] .presence-dot {
   animation-duration: var(--heartbeat-ms, 980ms);
 }
 
-.presence[data-state="playing"] .presence-dot {
+.presence[data-state="arrived"] .presence-dot,
+.presence[data-state="signal-active"] .presence-dot,
+.presence[data-state="complete"] .presence-dot {
   background: var(--sick);
   box-shadow: 0 0 18px rgba(114, 255, 87, 0.44);
+}
+
+.presence[data-state="paused"] .presence-dot {
+  background: var(--bone-dim);
+  box-shadow: 0 0 18px rgba(230, 225, 214, 0.28);
 }
 
 .legal-gate {
@@ -1165,18 +1174,6 @@ button {
 
 .im-here-button[data-state="enroute"] .im-here-icon {
   opacity: 0.48;
-}
-
-.im-here-button[data-state="primed"] {
-  border-color: rgba(114, 255, 87, 0.24);
-  background:
-    linear-gradient(90deg, rgba(114, 255, 87, 0.08), transparent 66%),
-    rgba(10, 9, 8, 0.58);
-  color: rgba(230, 225, 214, 0.86);
-}
-
-.im-here-button[data-state="primed"] .im-here-icon {
-  color: rgba(114, 255, 87, 0.62);
 }
 
 .im-here-button[data-state="arrived"] {

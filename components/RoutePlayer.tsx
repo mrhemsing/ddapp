@@ -27,7 +27,8 @@ type LocationMode = "unknown" | "watching" | "manual" | "denied";
 type NarrationPlayback = "idle" | "playing" | "paused";
 type RitualPlayback = "idle" | "playing" | "played";
 type LegalStatus = "checking" | "accepted" | "blocked";
-type ImHereState = "enroute" | "primed" | "arrived";
+type ImHereState = "enroute" | "arrived";
+type StopStatus = "waiting" | "arrived" | "signal-active" | "paused" | "complete";
 const ROUTE_NARRATION_VOLUME = 1.45;
 const activeDriveStates: PlayerState[] = ["intro", "traveling", "approaching", "armed", "playing", "played", "outro", "outroPlayed"];
 const resumeStorageKey = "dark-drives:route-session";
@@ -131,28 +132,28 @@ function stateCopy(playerState: PlayerState) {
   if (playerState === "ready") return "Ready";
   if (playerState === "intro") return "Opening signal";
   if (playerState === "introPlayed") return "Ready";
-  if (playerState === "traveling") return "The road is quiet";
-  if (playerState === "approaching") return "Something is close";
-  if (playerState === "armed") return "It's here";
-  if (playerState === "playing") return "Listen";
-  if (playerState === "played") return "File open";
+  if (playerState === "traveling" || playerState === "approaching") return "Waiting";
+  if (playerState === "armed") return "Arrived";
+  if (playerState === "playing") return "Signal active";
+  if (playerState === "played") return "Complete";
   if (playerState === "outro") return "Final signal";
   if (playerState === "outroPlayed") return "Final heard";
   return "Route closed";
 }
 
-function presenceCopy(playerState: PlayerState, distanceMeters: number | null, narrationPlayback: NarrationPlayback) {
-  if ((playerState === "intro" || playerState === "outro") && narrationPlayback === "paused") return "Signal held";
-  if (playerState === "intro") return "Signal active";
-  if (playerState === "introPlayed") return "Waiting";
-  if (playerState === "approaching" && distanceMeters !== null) return `${distanceMeters.toLocaleString()}m`;
-  if (playerState === "armed") return "It found the car";
-  if (playerState === "playing" && narrationPlayback === "paused") return "Signal held";
-  if (playerState === "playing") return "Signal active";
-  if (playerState === "played") return "The file is open";
-  if (playerState === "outro") return "Signal active";
-  if (playerState === "outroPlayed") return "Final heard";
-  if (playerState === "traveling") return "Nothing on the glass";
+function stopStatusFor(playerState: PlayerState, narrationPlayback: NarrationPlayback): StopStatus {
+  if (playerState === "played" || playerState === "outroPlayed") return "complete";
+  if ((playerState === "playing" || playerState === "outro") && narrationPlayback === "paused") return "paused";
+  if (playerState === "playing" || playerState === "outro") return "signal-active";
+  if (playerState === "armed") return "arrived";
+  return "waiting";
+}
+
+function stopStatusLabel(status: StopStatus) {
+  if (status === "arrived") return "Arrived";
+  if (status === "signal-active") return "Signal active";
+  if (status === "paused") return "Paused";
+  if (status === "complete") return "Complete";
   return "Waiting";
 }
 
@@ -474,7 +475,6 @@ export function RoutePlayer() {
   const [welcomeFlashLoopName, setWelcomeFlashLoopName] = useState("");
   const [shareStatus, setShareStatus] = useState("");
   const [pendingSkipStopId, setPendingSkipStopId] = useState<string | null>(null);
-  const [primedImHereStopId, setPrimedImHereStopId] = useState<string | null>(null);
   const audioEngine = useRef<DarkDrivesAudioEngine | null>(null);
   const screenRef = useRef<HTMLElement | null>(null);
   const wakeLock = useRef(createWakeLockHandle());
@@ -487,6 +487,7 @@ export function RoutePlayer() {
   const ritualPlaybackToken = useRef(0);
   const lastLocationUpdate = useRef(0);
   const lastPositionFix = useRef<PositionFix | null>(null);
+  const arrivalFixCount = useRef(0);
   const hasAutoArmedStop = useRef(false);
   const routeHasLoops = Boolean(route?.loops?.length);
   const selectedLoop = selectedLoopId ? route?.loops?.find((loop) => loop.id === selectedLoopId) ?? null : null;
@@ -534,11 +535,8 @@ export function RoutePlayer() {
     (playerState === "traveling" || playerState === "approaching" || playerState === "armed")
   );
   const skipLabel = needsSkipConfirm && pendingSkipStopId === currentStop?.id ? "Confirm Skip" : "Skip";
-  const imHereState: ImHereState = playerState === "armed" || playerState === "playing" || playerState === "played"
-    ? "arrived"
-    : currentStop && primedImHereStopId === currentStop.id
-      ? "primed"
-      : "enroute";
+  const stopStatus = stopStatusFor(playerState, narrationPlayback);
+  const imHereState: ImHereState = stopStatus === "waiting" ? "enroute" : "arrived";
   const screenClassName = ["screen", isStopPage && isDriveActive ? "drive-active" : ""].filter(Boolean).join(" ");
   const selectedLoopLiveCount = activeStops.length;
   const selectedLoopHeldCount = selectedLoopSealedStops.length;
@@ -607,7 +605,7 @@ export function RoutePlayer() {
     : resumeState && isPreDrive ? "Resume"
       : !hasCheckedResume && isPreDrive ? "Checking"
         : isChoosingLoop ? "Choose Night"
-          : stateCopy(playerState);
+          : isStopPage ? stopStatusLabel(stopStatus) : stateCopy(playerState);
 
   function loopFinaleTitle(loop: NonNullable<RoutePack["loops"]>[number]) {
     const finaleId = loop.stopIds.at(-1);
@@ -894,15 +892,25 @@ export function RoutePlayer() {
         }
 
         if (meters <= armRadius) {
+          arrivalFixCount.current += 1;
+          if (arrivalFixCount.current < 2) {
+            setPlayerState("approaching");
+            void audioEngine.current?.startAmbient(ambientUrl);
+            audioEngine.current?.setAmbientVolume(0.2 + intensity * 0.22);
+            return;
+          }
+
           hasAutoArmedStop.current = true;
           navigator.vibrate?.(80);
           setPlayerState("armed");
           audioEngine.current?.setAmbientVolume(0.44);
         } else if (meters <= currentStop.approachRadiusM) {
+          arrivalFixCount.current = 0;
           setPlayerState("approaching");
           void audioEngine.current?.startAmbient(ambientUrl);
           audioEngine.current?.setAmbientVolume(0.2 + intensity * 0.22);
         } else if (playerState === "approaching" && meters > currentStop.approachRadiusM + 75) {
+          arrivalFixCount.current = 0;
           setPlayerState("traveling");
           setApproachIntensity(0);
           audioEngine.current?.setAmbientVolume(0.2);
@@ -1077,11 +1085,10 @@ export function RoutePlayer() {
       setLocationMode("manual");
     }
 
-    const startsAtFirstStop = activeStopIndex === 0;
-    hasAutoArmedStop.current = startsAtFirstStop;
-    setApproachIntensity(startsAtFirstStop ? 1 : 0);
-    setPrimedImHereStopId(null);
-    setPlayerState(startsAtFirstStop ? "armed" : "traveling");
+    arrivalFixCount.current = 0;
+    hasAutoArmedStop.current = false;
+    setApproachIntensity(0);
+    setPlayerState("traveling");
     void wakeLock.current
       .request()
       .then(() => setWakeStatus(wakeLock.current.supported ? "Active" : "Unsupported"))
@@ -1170,7 +1177,7 @@ export function RoutePlayer() {
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
     setApproachIntensity(0);
-    setPrimedImHereStopId(null);
+    arrivalFixCount.current = 0;
     hasAutoArmedStop.current = false;
     setPlayerState("traveling");
     if (legAudio) {
@@ -1230,9 +1237,6 @@ export function RoutePlayer() {
       return;
     }
 
-    if (playerState === "traveling" || playerState === "approaching") {
-      setPrimedImHereStopId(currentStop.id);
-    }
     window.open(mapsUrl(currentStop), "_blank", "noopener,noreferrer");
   }
 
@@ -1246,7 +1250,7 @@ export function RoutePlayer() {
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
     setApproachIntensity(0);
-    setPrimedImHereStopId(null);
+    arrivalFixCount.current = 0;
     setShareStatus("");
     setCurrentPosition(null);
     lastPositionFix.current = null;
@@ -1338,7 +1342,7 @@ export function RoutePlayer() {
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
     setApproachIntensity(0);
-    setPrimedImHereStopId(null);
+    arrivalFixCount.current = 0;
     setCurrentPosition(null);
     setSkippedStopIds([]);
     setSessionEvents([]);
@@ -1448,7 +1452,7 @@ export function RoutePlayer() {
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
     setApproachIntensity(0);
-    setPrimedImHereStopId(null);
+    arrivalFixCount.current = 0;
     setCurrentPosition(null);
     setSkippedStopIds([]);
     setSessionEvents([]);
@@ -1478,7 +1482,7 @@ export function RoutePlayer() {
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
     setApproachIntensity(0);
-    setPrimedImHereStopId(null);
+    arrivalFixCount.current = 0;
     setCurrentPosition(null);
     setSkippedStopIds([]);
     setSessionEvents([]);
@@ -1508,7 +1512,7 @@ export function RoutePlayer() {
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
     setApproachIntensity(0);
-    setPrimedImHereStopId(null);
+    arrivalFixCount.current = 0;
     setCurrentPosition(null);
     setLocationMode("unknown");
     setSkippedStopIds([]);
@@ -1575,7 +1579,7 @@ export function RoutePlayer() {
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
     setApproachIntensity(0);
-    setPrimedImHereStopId(null);
+    arrivalFixCount.current = 0;
     setCurrentPosition(null);
     lastPositionFix.current = null;
     hasAutoArmedStop.current = false;
@@ -1924,9 +1928,9 @@ export function RoutePlayer() {
                 {selectedLoop?.title ?? "Route"} / Stop {activeStopIndex + 1} of {activeStops.length}
               </span>
               <h2 className="stop-name">{currentStop.title}</h2>
-              <div className="presence" data-state={playerState}>
+              <div className="presence" data-state={stopStatus}>
                 <span className="presence-dot" aria-hidden />
-                <span>{presenceCopy(playerState, distanceMeters, narrationPlayback)}</span>
+                <span>{stopStatusLabel(stopStatus)}</span>
               </div>
             </div>
           )}
@@ -2134,7 +2138,7 @@ export function RoutePlayer() {
                 <span className="file-tab">STOP {String(activeStopIndex + 1).padStart(2, "0")}</span>
                 <span className="sealed">{playerState === "armed" ? "OPENING" : playerState === "playing" ? "ON AIR" : "OPEN"}</span>
               </div>
-              <h2>{stateCopy(playerState)}</h2>
+              <h2>{stopStatusLabel(stopStatus)}</h2>
               {locationMode === "denied" && <p>Location is off. You will arm each stop yourself.</p>}
               <p className="safety-line">{currentStop.safetyNote}</p>
               <details className="read-disclosure">
