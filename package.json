@@ -13,6 +13,7 @@
     "generate:all40": "node --experimental-strip-types scripts/generate-saskatoon-all40-audio.mjs",
     "generate:drive-legs": "node scripts/generate-drive-legs-audio.mjs",
     "generate:rituals": "node scripts/generate-elevenlabs-ritual-audio.mjs",
+    "generate:voice-auditions": "node --experimental-strip-types scripts/generate-voice-auditions.mjs",
     "build:route-pack": "node --experimental-strip-types scripts/build-private-route-pack.mjs"
   },
   "dependencies": {

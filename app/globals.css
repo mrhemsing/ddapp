@@ -2196,6 +2196,211 @@ button {
   text-transform: none;
 }
 
+.voice-audition-shell {
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.voice-audition-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.voice-audition-tabs {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.voice-audition-tabs button,
+.voice-audition-action,
+.voice-audition-copy,
+.voice-audition-score button {
+  min-height: 38px;
+  border: 1px solid rgba(230, 225, 214, 0.16);
+  background: rgba(10, 9, 8, 0.7);
+  color: var(--bone);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  padding: 0 12px;
+  text-transform: uppercase;
+}
+
+.voice-audition-tabs button[aria-selected="true"],
+.voice-audition-score button[aria-pressed="true"] {
+  border-color: rgba(114, 255, 87, 0.52);
+  color: var(--sick);
+  box-shadow: inset 0 0 16px rgba(114, 255, 87, 0.08);
+}
+
+.voice-audition-action:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.voice-audition-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--bone-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.voice-audition-toggle input {
+  accent-color: var(--sick);
+}
+
+.voice-audition-script {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(0, 1.3fr);
+  gap: 16px;
+  border: 1px solid var(--ash-line);
+  background: rgba(18, 16, 14, 0.62);
+  padding: 18px;
+}
+
+.voice-audition-script h2 {
+  margin: 8px 0;
+  color: var(--bone);
+  font-family: var(--font-display);
+  font-size: 32px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.voice-audition-script pre {
+  max-height: 320px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: var(--bone-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.voice-audition-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.voice-audition-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--ash-line);
+  background: rgba(24, 20, 16, 0.72);
+  padding: 18px;
+}
+
+.voice-audition-card[data-control="true"] {
+  border-color: rgba(114, 255, 87, 0.24);
+  background:
+    linear-gradient(90deg, rgba(114, 255, 87, 0.05), transparent 58%),
+    rgba(24, 20, 16, 0.72);
+}
+
+.voice-audition-card-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.voice-audition-card h3 {
+  margin: 8px 0;
+  color: var(--bone);
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.voice-audition-card p {
+  margin: 0;
+  color: var(--ash);
+  line-height: 1.4;
+}
+
+.voice-audition-card audio {
+  width: 100%;
+  min-height: 42px;
+  accent-color: var(--blood-hot);
+}
+
+.voice-audition-config {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin: 0;
+  border-top: 1px solid rgba(230, 225, 214, 0.08);
+  padding-top: 12px;
+}
+
+.voice-audition-config div {
+  display: grid;
+  gap: 3px;
+}
+
+.voice-audition-config dt {
+  color: rgba(114, 255, 87, 0.62);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.voice-audition-config dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--bone-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.voice-audition-config-wide {
+  grid-column: 1 / -1;
+}
+
+.voice-audition-score {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.voice-audition-score button {
+  min-width: 0;
+  padding: 0;
+}
+
+.voice-audition-card textarea {
+  min-height: 88px;
+  width: 100%;
+  border: 1px solid rgba(230, 225, 214, 0.16);
+  background: rgba(6, 5, 5, 0.72);
+  color: var(--bone);
+  font: inherit;
+  line-height: 1.4;
+  padding: 10px;
+  resize: vertical;
+}
+
+.voice-audition-copy {
+  justify-self: start;
+}
+
 @media (max-width: 760px) {
   .dev-audio-page {
     padding: 18px;
@@ -2207,6 +2412,11 @@ button {
   }
 
   .dev-audio-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .voice-audition-script,
+  .voice-audition-grid {
     grid-template-columns: 1fr;
   }
 }
