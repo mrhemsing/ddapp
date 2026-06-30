@@ -87,7 +87,7 @@ export const fakeRoute: RoutePack = {
   id: "saskatoon-p0-slice",
   title: "The Dark Side of Saskatoon",
   blurb: "Enhanced v2 sample route with real legends, rituals, and review audio.",
-  introAudio: "/audio/elevenlabs-review/intro.mp3",
+  introAudio: "/audio/elevenlabs-review/intro-route-signal-20260630.mp3",
   introScript: `Everything you are about to hear is tied to a real place in Saskatoon. I will be your guide as we explore the cities most haunted roads, parks and landmarks.
 
 Saskatoon looks ordinary in the daylight. A river. A few bridges. Quiet streets that run out into fields. But after dark the city keeps a second set of records, and tonight, I will be reading them out loud.
