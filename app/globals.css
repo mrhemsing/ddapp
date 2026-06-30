@@ -761,6 +761,10 @@ button {
   text-transform: uppercase;
 }
 
+.welcome-loop-stats > strong.is-marathon-duration {
+  color: #c89452;
+}
+
 .welcome-loop-stats span {
   display: grid;
   gap: 3px;

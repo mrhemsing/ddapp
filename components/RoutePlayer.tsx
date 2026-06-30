@@ -1770,13 +1770,12 @@ export function RoutePlayer() {
                           <strong>{loop.area}</strong>
                         </span>
                         <span className="welcome-loop-stats">
-                          <strong>{loop.estimatedDuration}</strong>
+                          <strong className={loop.isMarathon ? "is-marathon-duration" : undefined}>{loop.estimatedDuration}</strong>
                           <span><em>Finale</em>{loop.finale}</span>
                         </span>
                         {loop.distanceMeters !== null && welcomeLocationStatus === "enabled" && (
                           <span className="welcome-loop-distance">First stop about {formatApproxDistance(loop.distanceMeters)} away, straight line</span>
                         )}
-                        {loop.isMarathon && <span className="welcome-loop-note">Marathon, all 39 stops, a serious commitment</span>}
                         <span className="welcome-loop-footer">
                           <span className="welcome-loop-pick">
                             <ArrowRight aria-hidden="true" />
