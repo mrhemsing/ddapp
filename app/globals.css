@@ -553,6 +553,10 @@ button {
 .welcome-loop-card {
   position: relative;
   display: grid;
+  --focus-scale: 1;
+  --focus-opacity: 1;
+  --focus-blur: 0px;
+  --focus-dark: 0;
   gap: 6px;
   min-height: 168px;
   border: 1px solid rgba(230, 225, 214, 0.12);
@@ -564,13 +568,17 @@ button {
   scroll-snap-align: center;
   text-align: left;
   text-decoration: none;
+  filter: blur(var(--focus-blur));
+  opacity: var(--focus-opacity);
+  transform: scale(var(--focus-scale));
+  will-change: transform, opacity, filter;
   transition:
     border-color 160ms ease,
     background 160ms ease,
     box-shadow 160ms ease,
-    filter 160ms ease,
-    opacity 160ms ease,
-    transform 160ms ease;
+    filter 80ms linear,
+    opacity 80ms linear,
+    transform 80ms linear;
 }
 
 .welcome-loop-card::before,
@@ -613,9 +621,7 @@ button {
 }
 
 .welcome-loop-card[data-active="false"] {
-  filter: blur(1.8px);
-  opacity: 0.48;
-  transform: scale(0.94);
+  border-color: rgba(230, 225, 214, 0.1);
 }
 
 .welcome-card-dark {
@@ -626,8 +632,8 @@ button {
   background:
     radial-gradient(110% 82% at 50% 50%, transparent 34%, rgba(3, 3, 3, 0.74) 100%),
     linear-gradient(180deg, rgba(3, 3, 3, 0.2), rgba(3, 3, 3, 0.34));
-  opacity: 0.3;
-  transition: opacity 160ms ease;
+  opacity: var(--focus-dark);
+  transition: opacity 80ms linear;
 }
 
 .welcome-loop-card[data-active="true"] .welcome-card-dark {
@@ -641,7 +647,7 @@ button {
 }
 
 .welcome-loop-card:active {
-  transform: scale(0.99);
+  transform: scale(calc(var(--focus-scale) * 0.99));
 }
 
 .welcome-loop-title {
@@ -802,6 +808,30 @@ button {
   font-size: 30px;
   line-height: 1;
   text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-loop-card {
+    filter: none;
+    opacity: 1;
+    transform: none;
+    transition:
+      border-color 160ms ease,
+      background 160ms ease,
+      box-shadow 160ms ease;
+  }
+
+  .welcome-card-dark {
+    opacity: 0;
+  }
+
+  .welcome-loop-card:active {
+    transform: none;
+  }
+
+  .location-link[data-locating="true"] .location-link-icon {
+    animation: none;
+  }
 }
 
 .primary {

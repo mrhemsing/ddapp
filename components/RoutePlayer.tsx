@@ -473,6 +473,8 @@ export function RoutePlayer() {
   const wakeLock = useRef(createWakeLockHandle());
   const welcomeScroller = useRef<HTMLDivElement | null>(null);
   const welcomeCards = useRef<Array<HTMLAnchorElement | null>>([]);
+  const welcomeAnimationFrame = useRef<number | null>(null);
+  const welcomeActiveLoopIndexRef = useRef(0);
   const welcomeSelectTimer = useRef<number | null>(null);
   const playbackToken = useRef(0);
   const ritualPlaybackToken = useRef(0);
@@ -555,21 +557,23 @@ export function RoutePlayer() {
 
     const realLoops = withDetails.filter((loop) => !loop.isMarathon);
     const marathon = withDetails.find((loop) => loop.isMarathon);
-    let ordered = realLoops;
+    const campus = realLoops.find((loop) => loop.id === "campus-after-dark");
+    const others = realLoops.filter((loop) => loop.id !== "campus-after-dark");
+    const ordered = campus ? [campus, ...others] : realLoops;
+    const closestLoop = welcomeLocationStatus === "enabled"
+      ? ordered.reduce<WelcomeLoop | null>((closest, loop) => {
+        if (loop.distanceMeters === null) {
+          return closest;
+        }
 
-    if (welcomeLocationStatus === "enabled" && welcomePosition) {
-      ordered = [...realLoops].sort((a, b) => {
-        const distanceA = a.distanceMeters ?? Number.POSITIVE_INFINITY;
-        const distanceB = b.distanceMeters ?? Number.POSITIVE_INFINITY;
-        return distanceA - distanceB;
-      });
-    } else {
-      const campus = realLoops.find((loop) => loop.id === "campus-after-dark");
-      const others = realLoops.filter((loop) => loop.id !== "campus-after-dark");
-      ordered = campus ? [campus, ...others] : realLoops;
-    }
+        if (!closest || loop.distanceMeters < (closest.distanceMeters ?? Number.POSITIVE_INFINITY)) {
+          return loop;
+        }
 
-    const closestId = welcomeLocationStatus === "enabled" ? ordered[0]?.id : null;
+        return closest;
+      }, null)
+      : null;
+    const closestId = closestLoop?.id ?? null;
     const pinned = marathon ? [...ordered, marathon] : ordered;
     return pinned.map((loop) => ({ ...loop, isClosest: loop.id === closestId }));
   }, [route?.loops, stopById, welcomeLocationStatus, welcomePosition]);
@@ -606,13 +610,32 @@ export function RoutePlayer() {
       if (welcomeSelectTimer.current !== null) {
         window.clearTimeout(welcomeSelectTimer.current);
       }
+      if (welcomeAnimationFrame.current !== null) {
+        window.cancelAnimationFrame(welcomeAnimationFrame.current);
+      }
     };
   }, []);
 
   useEffect(() => {
     setWelcomeActiveLoopIndex(0);
+    welcomeActiveLoopIndexRef.current = 0;
     welcomeScroller.current?.scrollTo({ top: 0, behavior: "auto" });
+    welcomeCards.current = welcomeCards.current.slice(0, welcomeLoops.length);
+    window.requestAnimationFrame(updateWelcomeFocus);
   }, [welcomeLoops.map((loop) => loop.id).join("|")]);
+
+  useEffect(() => {
+    if (welcomeLocationStatus !== "enabled") {
+      return;
+    }
+
+    const closestIndex = welcomeLoops.findIndex((loop) => loop.isClosest);
+    if (closestIndex >= 0) {
+      const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      welcomeCards.current[closestIndex]?.scrollIntoView({ block: "center", behavior: prefersReducedMotion ? "auto" : "smooth" });
+      window.requestAnimationFrame(updateWelcomeFocus);
+    }
+  }, [welcomeLocationStatus, welcomeLoops]);
 
   useEffect(() => {
     const accepted = isCurrentLegalAcceptance(window.localStorage.getItem(legalAcceptanceStorageKey));
@@ -1282,7 +1305,7 @@ export function RoutePlayer() {
     }
   }
 
-  function updateWelcomeActiveLoop() {
+  function updateWelcomeFocus() {
     const scroller = welcomeScroller.current;
     if (!scroller) {
       return;
@@ -1290,6 +1313,7 @@ export function RoutePlayer() {
 
     const scrollerRect = scroller.getBoundingClientRect();
     const centerY = scrollerRect.top + scrollerRect.height / 2;
+    const halfHeight = Math.max(scrollerRect.height / 2, 1);
     let closestIndex = 0;
     let closestDistance = Number.POSITIVE_INFINITY;
 
@@ -1300,18 +1324,42 @@ export function RoutePlayer() {
 
       const rect = card.getBoundingClientRect();
       const distance = Math.abs(rect.top + rect.height / 2 - centerY);
+      const normalized = Math.min(distance / halfHeight, 1);
+      const eased = normalized * normalized;
+      card.style.setProperty("--focus-scale", String(1 - eased * 0.14));
+      card.style.setProperty("--focus-opacity", String(1 - eased * 0.72));
+      card.style.setProperty("--focus-blur", `${eased * 4}px`);
+      card.style.setProperty("--focus-dark", String(Math.min(eased * 1.05, 0.86)));
+
       if (distance < closestDistance) {
         closestDistance = distance;
         closestIndex = index;
       }
     });
 
+    if (closestIndex !== welcomeActiveLoopIndexRef.current) {
+      welcomeActiveLoopIndexRef.current = closestIndex;
+      navigator.vibrate?.(7);
+    }
+
     setWelcomeActiveLoopIndex(closestIndex);
+  }
+
+  function scheduleWelcomeFocusUpdate() {
+    if (welcomeAnimationFrame.current !== null) {
+      return;
+    }
+
+    welcomeAnimationFrame.current = window.requestAnimationFrame(() => {
+      welcomeAnimationFrame.current = null;
+      updateWelcomeFocus();
+    });
   }
 
   function chooseWelcomeLoop(loop: WelcomeLoop, index: number) {
     if (index !== welcomeActiveLoopIndex) {
-      welcomeCards.current[index]?.scrollIntoView({ block: "center", behavior: "smooth" });
+      const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      welcomeCards.current[index]?.scrollIntoView({ block: "center", behavior: prefersReducedMotion ? "auto" : "smooth" });
       return;
     }
 
@@ -1673,7 +1721,7 @@ export function RoutePlayer() {
                 {welcomeLocationStatus === "far" && <span>You do not look near Saskatoon. Showing start areas instead.</span>}
               </div>
               <div className="welcome-loop-stage">
-                <div className="welcome-loop-scroller" ref={welcomeScroller} onScroll={updateWelcomeActiveLoop}>
+                <div className="welcome-loop-scroller" ref={welcomeScroller} onScroll={scheduleWelcomeFocusUpdate}>
                   <div className="welcome-loop-track">
                     {welcomeLoops.map((loop, index) => (
                       <a
