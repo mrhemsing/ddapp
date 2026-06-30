@@ -346,7 +346,7 @@ Other kids in the neighbourhood saw her too. Nobody ever learned her name.`
   {
     index: 24,
     id: "range-road-3043",
-    title: "Range Road 3043 and Highway 5",
+    title: "Range Rd 3043 and Highway 5",
     ritualCue: "Rattle the chains, loud, into the dark. Then stop. And listen.",
     safetyNote: "Stay in the car or very close to it. Park safely off the gravel road. This is a remote area.",
     script: `Out here past the edge of the city, where the gravel runs straight into the dark, the land holds onto a cruelty it witnessed long ago.
