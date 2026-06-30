@@ -425,8 +425,8 @@ button {
   grid-template-rows: auto auto minmax(320px, 1fr);
   min-height: 0;
   flex: 1;
-  gap: 14px;
-  padding-block: 6px 0;
+  gap: 8px;
+  padding-block: 2px 0;
 }
 
 .welcome-intro {
@@ -523,7 +523,7 @@ button {
 
 .welcome-loop-stage {
   position: relative;
-  --welcome-stage-height: clamp(390px, 58svh, 520px);
+  --welcome-stage-height: clamp(380px, 55svh, 500px);
   --welcome-card-height: clamp(330px, 46svh, 375px);
   height: var(--welcome-stage-height);
   min-height: 0;
@@ -917,7 +917,7 @@ button {
 
 @media (max-height: 720px) {
   .welcome-loop-stage {
-    --welcome-stage-height: clamp(370px, 59svh, 410px);
+    --welcome-stage-height: clamp(350px, 56svh, 390px);
     --welcome-card-height: clamp(310px, 46svh, 330px);
   }
 
