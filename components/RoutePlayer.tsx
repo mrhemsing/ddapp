@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Navigation } from "lucide-react";
+import { Navigation, Play } from "lucide-react";
 import { cacheRouteAudio, isRouteCached, type CacheProgress } from "@/lib/audio-cache";
 import { DarkDrivesAudioEngine } from "@/lib/audio-engine";
 import type { PlaybackProgress } from "@/lib/audio-engine";
@@ -1783,8 +1783,9 @@ export function RoutePlayer() {
                   </button>
                 ) : playerState === "outro" ? null : (
                   <>
-                    <button className="secondary" onClick={() => void armManually()} disabled={!canArmManually}>
-                      I&apos;m Here
+                    <button className="secondary im-here-button" onClick={() => void armManually()} disabled={!canArmManually}>
+                      <Play className="im-here-icon" aria-hidden="true" fill="currentColor" />
+                      <span>I&apos;m Here</span>
                     </button>
                     <button className="secondary" onClick={skipCurrentStop} disabled={!canSkip}>
                       {skipLabel}

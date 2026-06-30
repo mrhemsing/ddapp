@@ -9,8 +9,8 @@ import type { RoutePack } from "@/lib/route-data";
 export const runtime = "nodejs";
 
 const localRoutePackPath = path.join(process.cwd(), "private", "dark-drives-route-pack.json");
-const routeIntroAudioUrl = "/audio/elevenlabs-review/intro-route-signal-20260630.mp3";
-const routeSignalAudioVersion = "route-signal-20260630-v3";
+const routeIntroAudioUrl = "/audio/elevenlabs-review/intro-route-signal-20260630-imhere.mp3";
+const routeSignalAudioVersion = "route-signal-20260630-v4";
 
 function versionAudioUrl(url: string) {
   const separator = url.includes("?") ? "&" : "?";
@@ -21,6 +21,7 @@ function withRouteSignalAudioVersion(route: RoutePack): RoutePack {
   return {
     ...route,
     introAudio: versionAudioUrl(routeIntroAudioUrl),
+    introScript: fakeRoute.introScript,
     outroAudio: versionAudioUrl(route.outroAudio)
   };
 }

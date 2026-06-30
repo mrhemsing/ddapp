@@ -697,19 +697,28 @@ button {
   color: var(--sick);
 }
 
-.directions-button {
+.directions-button,
+.im-here-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
 }
 
-.directions-icon {
+.directions-icon,
+.im-here-icon {
   width: 13px;
   height: 13px;
   flex: 0 0 13px;
   color: currentColor;
+}
+
+.directions-icon {
   stroke-width: 2.4;
+}
+
+.im-here-icon {
+  stroke-width: 0;
 }
 
 .secondary:disabled,
