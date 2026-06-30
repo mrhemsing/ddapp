@@ -54,9 +54,13 @@ type PositionFix = {
 };
 
 type WelcomeLoop = NonNullable<RoutePack["loops"]>[number] & {
+  area: string;
   coverage: string;
+  finale: string;
+  loopNumber: number;
   startNeighborhood: string;
   startStop: Stop | null;
+  startText: string;
   distanceMeters: number | null;
   isClosest: boolean;
   isMarathon: boolean;
@@ -561,7 +565,7 @@ export function RoutePlayer() {
     const others = realLoops.filter((loop) => loop.id !== "campus-after-dark");
     const ordered = campus ? [campus, ...others] : realLoops;
     const closestLoop = welcomeLocationStatus === "enabled"
-      ? ordered.reduce<WelcomeLoop | null>((closest, loop) => {
+      ? ordered.reduce<(typeof ordered)[number] | null>((closest, loop) => {
         if (loop.distanceMeters === null) {
           return closest;
         }
@@ -575,7 +579,14 @@ export function RoutePlayer() {
       : null;
     const closestId = closestLoop?.id ?? null;
     const pinned = marathon ? [...ordered, marathon] : ordered;
-    return pinned.map((loop) => ({ ...loop, isClosest: loop.id === closestId }));
+    return pinned.map((loop, index) => ({
+      ...loop,
+      area: loop.coverage,
+      finale: loopFinaleTitle(loop),
+      loopNumber: index + 1,
+      startText: `${loop.startNeighborhood}: ${loop.startStop?.title ?? "first live stop"}`,
+      isClosest: loop.id === closestId
+    }));
   }, [route?.loops, stopById, welcomeLocationStatus, welcomePosition]);
   const completedLoopIdSet = useMemo(() => new Set(completedLoopIds), [completedLoopIds]);
   const nextUnfinishedLoop = authoredLoops.find((loop) => !completedLoopIdSet.has(loop.id));
@@ -1740,22 +1751,37 @@ export function RoutePlayer() {
                         }}
                       >
                         <span className="welcome-card-dark" aria-hidden />
-                        <div className="welcome-loop-title">
-                          <strong>{loop.title}</strong>
-                          {loop.isClosest && <span>Closest</span>}
-                          {loop.isMarathon && <span>Marathon</span>}
+                        <div className="welcome-loop-card-head">
+                          <span className="welcome-loop-eyebrow">Loop <strong>{String(loop.loopNumber).padStart(2, "0")}</strong></span>
+                          <span className="welcome-loop-badges">
+                            {loop.isClosest && <span>Closest</span>}
+                            {loop.isMarathon && <span>Marathon</span>}
+                          </span>
                         </div>
-                        <span>{loop.subtitle}</span>
-                        <span>Starts {loop.startNeighborhood}: {loop.startStop?.title ?? "first live stop"}</span>
-                        <span>Covers {loop.coverage}</span>
-                        <em>{loop.estimatedDuration} / finale: {loopFinaleTitle(loop)}</em>
+                        <strong className="welcome-loop-name">{loop.title}</strong>
+                        <span className="welcome-loop-hook">{loop.subtitle}</span>
+                        <span className="welcome-loop-rule" aria-hidden />
+                        <span className="welcome-loop-meta">
+                          <span>Start</span>
+                          <strong>{loop.startText}</strong>
+                        </span>
+                        <span className="welcome-loop-meta">
+                          <span>Area</span>
+                          <strong>{loop.area}</strong>
+                        </span>
+                        <span className="welcome-loop-stats">
+                          <strong>{loop.estimatedDuration}</strong>
+                          <span><em>Finale</em>{loop.finale}</span>
+                        </span>
                         {loop.distanceMeters !== null && welcomeLocationStatus === "enabled" && (
-                          <em>First stop about {formatApproxDistance(loop.distanceMeters)} away, straight line</em>
+                          <span className="welcome-loop-distance">First stop about {formatApproxDistance(loop.distanceMeters)} away, straight line</span>
                         )}
-                        {loop.isMarathon && <em>Marathon, all 39 stops, a serious commitment</em>}
-                        <span className="welcome-loop-pick">
-                          <ArrowRight aria-hidden="true" />
-                          Tap to choose this night
+                        {loop.isMarathon && <span className="welcome-loop-note">Marathon, all 39 stops, a serious commitment</span>}
+                        <span className="welcome-loop-footer">
+                          <span className="welcome-loop-pick">
+                            <ArrowRight aria-hidden="true" />
+                            Choose this night
+                          </span>
                         </span>
                       </a>
                     ))}
