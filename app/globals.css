@@ -570,6 +570,20 @@ button {
   opacity: 0.72;
 }
 
+.ritual-action[data-type="action"] {
+  gap: 10px;
+}
+
+.ritual-directive {
+  border-left: 2px solid var(--blood-hot);
+  padding-left: 10px;
+  color: var(--bone);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+  text-transform: uppercase;
+}
+
 .ritual-button {
   min-height: 56px;
   border: 1px solid var(--blood-dim);
@@ -588,6 +602,12 @@ button {
   cursor: default;
   color: var(--ash);
   opacity: 1;
+}
+
+.ritual-action[data-type="action"] .ritual-button {
+  min-height: 44px;
+  justify-self: start;
+  padding: 0 14px;
 }
 
 .ritual-button:hover {

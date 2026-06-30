@@ -322,7 +322,6 @@ export function RoutePlayer() {
   const [ritualProgress, setRitualProgress] = useState<PlaybackProgress | null>(null);
   const [activeRitualId, setActiveRitualId] = useState<string | null>(null);
   const [isForeground, setIsForeground] = useState(true);
-  const [ritualMessage, setRitualMessage] = useState("");
   const [sessionEvents, setSessionEvents] = useState<SessionEvent[]>([]);
   const [skippedStopIds, setSkippedStopIds] = useState<string[]>([]);
   const [completedLoopIds, setCompletedLoopIds] = useState<string[]>([]);
@@ -801,7 +800,6 @@ export function RoutePlayer() {
     }
 
     if (playerState === "played") {
-      setRitualMessage("");
       await playCurrentStopNarration();
       return;
     }
@@ -912,7 +910,6 @@ export function RoutePlayer() {
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
     setApproachIntensity(0);
-    setRitualMessage("");
     hasAutoArmedStop.current = false;
     setPlayerState("traveling");
     if (legAudio) {
@@ -977,7 +974,6 @@ export function RoutePlayer() {
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
     setApproachIntensity(0);
-    setRitualMessage("");
     setShareStatus("");
     setCurrentPosition(null);
     lastPositionFix.current = null;
@@ -1069,7 +1065,6 @@ export function RoutePlayer() {
     setEffectiveArriveRadius(null);
     setApproachIntensity(0);
     setCurrentPosition(null);
-    setRitualMessage("");
     setSkippedStopIds([]);
     setSessionEvents([]);
     setShareStatus("");
@@ -1108,7 +1103,6 @@ export function RoutePlayer() {
     setEffectiveArriveRadius(null);
     setApproachIntensity(0);
     setCurrentPosition(null);
-    setRitualMessage("");
     setSkippedStopIds([]);
     setSessionEvents([]);
     setShareStatus("");
@@ -1138,7 +1132,6 @@ export function RoutePlayer() {
     setEffectiveArriveRadius(null);
     setApproachIntensity(0);
     setCurrentPosition(null);
-    setRitualMessage("");
     setSkippedStopIds([]);
     setSessionEvents([]);
     setShareStatus("");
@@ -1169,7 +1162,6 @@ export function RoutePlayer() {
     setApproachIntensity(0);
     setCurrentPosition(null);
     setLocationMode("unknown");
-    setRitualMessage("");
     setSkippedStopIds([]);
     setSessionEvents([]);
     setShareStatus("");
@@ -1237,7 +1229,6 @@ export function RoutePlayer() {
     setCurrentPosition(null);
     lastPositionFix.current = null;
     hasAutoArmedStop.current = false;
-    setRitualMessage("");
     setSessionEvents([]);
     setSkippedStopIds([]);
     setCompletedLoopIds([]);
@@ -1260,7 +1251,10 @@ export function RoutePlayer() {
       return;
     }
 
-    setRitualMessage(ritual.instructionText);
+    if (!ritual.cueAudio && sessionEvents.some((event) => event.type === "ritual" && event.ritualId === ritual.id)) {
+      return;
+    }
+
     const token = playbackToken.current;
     const ritualToken = ritualPlaybackToken.current + 1;
     ritualPlaybackToken.current = ritualToken;
@@ -1635,38 +1629,43 @@ export function RoutePlayer() {
             <div className="ritual-panel" aria-label="Ritual actions">
               <span className="tiny">Ritual</span>
               {currentStop.rituals.map((ritual) => {
+                const isAudioRitual = Boolean(ritual.cueAudio);
                 const isArmed = playerState === "played";
                 const isActive = activeRitualId === ritual.id && ritualPlayback === "playing";
                 const hasPlayed = activeRitualId === ritual.id && ritualPlayback === "played";
+                const hasAcknowledged = !isAudioRitual && sessionEvents.some((event) => event.type === "ritual" && event.ritualId === ritual.id);
                 const ritualLabel = ritual.label.toLowerCase();
                 const buttonLabel = !isArmed
                   ? "Ready after the story"
-                  : isActive
-                    ? "Stop cue"
-                    : `${hasPlayed ? "Replay" : ritual.cueAudio ? "Play" : "Perform"} ${ritualLabel}`;
+                  : !isAudioRitual
+                    ? hasAcknowledged ? "Done" : "We did it"
+                    : isActive
+                      ? "Stop cue"
+                      : `${hasPlayed ? "Replay" : "Play"} ${ritualLabel}`;
 
                 return (
                   <div
                     className="ritual-action"
                     data-armed={isArmed}
+                    data-type={isAudioRitual ? "audio" : "action"}
                     data-anticipating={!isArmed && playerState === "playing" && (narrationProgress?.percent ?? 0) >= 85}
                     key={ritual.id}
                   >
+                    {!isAudioRitual && <strong className="ritual-directive">{ritual.instructionText}</strong>}
                     <button
                       className="ritual-button"
-                      disabled={!isArmed}
+                      disabled={!isArmed || hasAcknowledged}
                       onClick={() => isActive ? stopRitualCue() : void triggerRitual(ritual)}
                     >
                       {buttonLabel}
                     </button>
-                    <p>{ritual.instructionText}</p>
-                    {isActive && (
+                    {isAudioRitual && <p>{ritual.instructionText}</p>}
+                    {isAudioRitual && isActive && (
                       <PlaybackSignal label={`${ritual.label} signal`} progress={ritualProgress} variant="ritual" bars={18} />
                     )}
                   </div>
                 );
               })}
-              {ritualMessage && <p>{ritualMessage}</p>}
             </div>
           )}
 
