@@ -283,6 +283,150 @@ button {
   box-shadow: 0 0 18px rgba(114, 255, 87, 0.44);
 }
 
+.legal-gate {
+  display: grid;
+  gap: 14px;
+  padding-block: 8px 18px;
+}
+
+.legal-gate h2 {
+  margin: 0;
+  color: var(--bone);
+  font-family: var(--font-display);
+  font-size: clamp(36px, 11vw, 58px);
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.legal-gate > p {
+  margin: 0;
+  color: var(--bone-dim);
+  line-height: 1.45;
+}
+
+.legal-points {
+  display: grid;
+  gap: 10px;
+}
+
+.legal-point {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 10px;
+  border: 1px solid rgba(230, 225, 214, 0.12);
+  background: rgba(10, 9, 8, 0.58);
+  padding: 12px;
+}
+
+.legal-point span {
+  color: var(--blood-hot);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.legal-point strong {
+  color: var(--bone);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.legal-point p,
+.legal-document p {
+  margin: 6px 0 0;
+  color: var(--ash);
+  line-height: 1.45;
+}
+
+.legal-documents {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid rgba(230, 225, 214, 0.08);
+  padding-top: 4px;
+}
+
+.legal-documents details {
+  border: 1px solid rgba(230, 225, 214, 0.1);
+  background: rgba(10, 9, 8, 0.52);
+  padding-inline: 10px;
+}
+
+.legal-documents summary {
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--bone-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  line-height: 44px;
+  list-style: none;
+  text-transform: uppercase;
+}
+
+.legal-documents summary::-webkit-details-marker {
+  display: none;
+}
+
+.legal-documents summary::before {
+  content: "+ ";
+  color: var(--blood-hot);
+}
+
+.legal-documents details[open] summary::before {
+  content: "- ";
+}
+
+.legal-document {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 12px;
+}
+
+.legal-document > strong {
+  color: var(--bone);
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.legal-document em {
+  color: var(--blood-hot);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.legal-document h3 {
+  margin: 0;
+  color: var(--bone-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.legal-check {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 10px;
+  align-items: start;
+  color: var(--bone-dim);
+  line-height: 1.35;
+}
+
+.legal-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--blood-hot);
+}
+
 .welcome-screen {
   display: grid;
   gap: 18px;

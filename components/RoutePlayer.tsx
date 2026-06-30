@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cacheRouteAudio, isRouteCached, type CacheProgress } from "@/lib/audio-cache";
 import { DarkDrivesAudioEngine } from "@/lib/audio-engine";
 import type { PlaybackProgress } from "@/lib/audio-engine";
+import { LEGAL_VERSION, legalAcceptanceStorageKey, legalAcknowledgmentPoints, legalDocuments } from "@/lib/legal";
+import type { LegalAcceptance } from "@/lib/legal";
 import type { RoutePack, Stop } from "@/lib/route-data";
 import { createWakeLockHandle } from "@/lib/wake-lock";
 
@@ -23,6 +25,7 @@ type PlayerState =
 type LocationMode = "unknown" | "watching" | "manual" | "denied";
 type NarrationPlayback = "idle" | "playing" | "paused";
 type RitualPlayback = "idle" | "playing" | "played";
+type LegalStatus = "checking" | "accepted" | "blocked";
 const ROUTE_NARRATION_VOLUME = 1.45;
 const activeDriveStates: PlayerState[] = ["intro", "traveling", "approaching", "armed", "playing", "played", "outro", "outroPlayed"];
 const resumeStorageKey = "dark-drives:route-session";
@@ -165,6 +168,86 @@ function cacheFilename(url?: string) {
 
   const path = url.split(/[?#]/, 1)[0];
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+}
+
+function isCurrentLegalAcceptance(value: string | null) {
+  if (!value) {
+    return false;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as Partial<LegalAcceptance>;
+    return parsed.version === LEGAL_VERSION && typeof parsed.acceptedAt === "string";
+  } catch {
+    return false;
+  }
+}
+
+function LegalDocument({ document }: { document: typeof legalDocuments.terms }) {
+  return (
+    <div className="legal-document">
+      <strong>{document.title}</strong>
+      <em>{document.note}</em>
+      {document.sections.map((section) => (
+        <section key={section.title}>
+          <h3>{section.title}</h3>
+          <p>{section.body}</p>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function LegalDocuments() {
+  return (
+    <div className="legal-documents" aria-label="Legal documents">
+      <details>
+        <summary>Terms of Use</summary>
+        <LegalDocument document={legalDocuments.terms} />
+      </details>
+      <details>
+        <summary>Privacy Policy</summary>
+        <LegalDocument document={legalDocuments.privacy} />
+      </details>
+    </div>
+  );
+}
+
+function LegalGate({
+  accepted,
+  onAcceptedChange,
+  onAccept
+}: {
+  accepted: boolean;
+  onAcceptedChange: (accepted: boolean) => void;
+  onAccept: () => void;
+}) {
+  return (
+    <div className="legal-gate" aria-label="Legal acknowledgment">
+      <span className="stop-count">Before you drive</span>
+      <h2>Read this before you start.</h2>
+      <p>This is a self-guided audio experience that sends you to real locations.</p>
+      <div className="legal-points">
+        {legalAcknowledgmentPoints.map((point, index) => (
+          <div className="legal-point" key={point.title}>
+            <span>{index + 1}</span>
+            <div>
+              <strong>{point.title}</strong>
+              <p>{point.body}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <LegalDocuments />
+      <label className="legal-check">
+        <input checked={accepted} onChange={(event) => onAcceptedChange(event.target.checked)} type="checkbox" />
+        <span>I have read and accept the above, the Terms of Use, and the Privacy Policy.</span>
+      </label>
+      <button className="primary ready" disabled={!accepted} onClick={onAccept}>
+        Accept and Continue
+      </button>
+    </div>
+  );
 }
 
 function PlaybackSignal({
@@ -350,6 +433,9 @@ function RouteMap({
 }
 
 export function RoutePlayer() {
+  const [legalStatus, setLegalStatus] = useState<LegalStatus>("checking");
+  const [hasCheckedLegal, setHasCheckedLegal] = useState(false);
+  const [legalCheckboxAccepted, setLegalCheckboxAccepted] = useState(false);
   const [route, setRoute] = useState<RoutePack | null>(null);
   const [routeError, setRouteError] = useState("");
   const [playerState, setPlayerState] = useState<PlayerState>("preflight");
@@ -511,6 +597,16 @@ export function RoutePlayer() {
   }, []);
 
   useEffect(() => {
+    const accepted = isCurrentLegalAcceptance(window.localStorage.getItem(legalAcceptanceStorageKey));
+    setLegalStatus(accepted ? "accepted" : "blocked");
+    setHasCheckedLegal(true);
+  }, []);
+
+  useEffect(() => {
+    if (legalStatus !== "accepted") {
+      return;
+    }
+
     let active = true;
 
     async function loadRoute() {
@@ -543,7 +639,7 @@ export function RoutePlayer() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [legalStatus]);
 
   const primary = useMemo(() => {
     if (!route) return { label: "Loading Route", disabled: true, className: "" };
@@ -850,6 +946,19 @@ export function RoutePlayer() {
     } else if (audioEngine.current?.pauseNarration()) {
       setNarrationPlayback("paused");
     }
+  }
+
+  function acceptLegalGate() {
+    if (!legalCheckboxAccepted) {
+      return;
+    }
+
+    const acceptance: LegalAcceptance = {
+      version: LEGAL_VERSION,
+      acceptedAt: new Date().toISOString()
+    };
+    window.localStorage.setItem(legalAcceptanceStorageKey, JSON.stringify(acceptance));
+    setLegalStatus("accepted");
   }
 
   function seekNarration(position: number) {
@@ -1426,7 +1535,24 @@ export function RoutePlayer() {
             <span className="status-pill">{statusLabel}</span>
           </header>
 
-          {!route ? (
+          {!hasCheckedLegal || legalStatus === "checking" ? (
+            <div className="panel">
+              <span className="corner-a" aria-hidden />
+              <span className="corner-b" aria-hidden />
+              <div className="file-row">
+                <span className="file-tab">LEGAL CHECK</span>
+                <span className="sealed">WAIT</span>
+              </div>
+              <h2>Checking terms</h2>
+              <p>Looking for this device&apos;s legal acknowledgment before loading the route.</p>
+            </div>
+          ) : legalStatus === "blocked" ? (
+            <LegalGate
+              accepted={legalCheckboxAccepted}
+              onAccept={acceptLegalGate}
+              onAcceptedChange={setLegalCheckboxAccepted}
+            />
+          ) : !route ? (
             <div className="panel">
               <span className="corner-a" aria-hidden />
               <span className="corner-b" aria-hidden />
@@ -1887,6 +2013,7 @@ export function RoutePlayer() {
           )}
             </>
           )}
+          {legalStatus === "accepted" && <LegalDocuments />}
         </section>
       </div>
     </main>
