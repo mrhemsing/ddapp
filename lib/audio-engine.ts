@@ -22,7 +22,7 @@ export type PlaybackProgress = {
 };
 
 const FOREGROUND_VOLUME_BOOST = 1.55;
-const MAX_FOREGROUND_VOLUME = 1.8;
+const MAX_FOREGROUND_VOLUME = 2.4;
 const DEFAULT_NARRATION_VOLUME = 0.95;
 
 export class DarkDrivesAudioEngine {
@@ -77,7 +77,7 @@ export class DarkDrivesAudioEngine {
     this.ambientGain.gain.setTargetAtTime(volume, this.context.currentTime, rampSeconds / 4);
   }
 
-  async playNarration(url: string) {
+  async playNarration(url: string, volume = DEFAULT_NARRATION_VOLUME) {
     const context = this.getContext();
     const narrationGain = this.getNarrationGain();
     const ambientGain = this.getAmbientGain();
@@ -89,11 +89,11 @@ export class DarkDrivesAudioEngine {
     ambientGain.gain.setTargetAtTime(0.08, context.currentTime, 0.06);
     narrationGain.gain.cancelScheduledValues(context.currentTime);
     narrationGain.gain.setValueAtTime(0.0001, context.currentTime);
-    const volume = this.foregroundVolume(DEFAULT_NARRATION_VOLUME);
-    narrationGain.gain.exponentialRampToValueAtTime(volume, context.currentTime + 0.05);
+    const targetVolume = this.foregroundVolume(volume);
+    narrationGain.gain.exponentialRampToValueAtTime(targetVolume, context.currentTime + 0.05);
 
     return new Promise<void>((resolve) => {
-      this.startNarrationSource({ buffer, offset: 0, volume, resolve });
+      this.startNarrationSource({ buffer, offset: 0, volume: targetVolume, resolve });
     });
   }
 

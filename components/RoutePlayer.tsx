@@ -23,6 +23,7 @@ type PlayerState =
 type LocationMode = "unknown" | "watching" | "manual" | "denied";
 type NarrationPlayback = "idle" | "playing" | "paused";
 type RitualPlayback = "idle" | "playing" | "played";
+const ROUTE_NARRATION_VOLUME = 1.45;
 const activeDriveStates: PlayerState[] = ["intro", "introPlayed", "traveling", "approaching", "armed", "playing", "played", "outro", "outroPlayed"];
 const resumeStorageKey = "dark-drives:route-session";
 const welcomeSeenStorageKey = "dark-drives:welcome-seen";
@@ -837,7 +838,7 @@ export function RoutePlayer() {
     audioEngine.current?.setAmbientVolume(0.2);
     setPlayerState("intro");
     setNarrationPlayback("playing");
-    await audioEngine.current?.playNarration(route.introAudio);
+    await audioEngine.current?.playNarration(route.introAudio, ROUTE_NARRATION_VOLUME);
     if (token !== playbackToken.current) {
       return;
     }
@@ -871,7 +872,7 @@ export function RoutePlayer() {
     await audioEngine.current?.startAmbient(ambientUrl);
     audioEngine.current?.setAmbientVolume(0.2);
     setNarrationPlayback("playing");
-    await audioEngine.current?.playNarration(route.outroAudio);
+    await audioEngine.current?.playNarration(route.outroAudio, ROUTE_NARRATION_VOLUME);
     if (token !== playbackToken.current) {
       return;
     }
@@ -914,7 +915,7 @@ export function RoutePlayer() {
     setPlayerState("traveling");
     if (legAudio) {
       setNarrationPlayback("playing");
-      await audioEngine.current?.playNarration(legAudio);
+      await audioEngine.current?.playNarration(legAudio, ROUTE_NARRATION_VOLUME);
       setNarrationPlayback("idle");
       setNarrationProgress(null);
     }
