@@ -1337,11 +1337,13 @@ button {
 }
 
 .cache-current {
-  min-height: 2.7em;
-  overflow-wrap: anywhere;
+  height: 1.35em;
+  overflow: hidden;
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cache-error {

@@ -158,6 +158,15 @@ function formatClipTime(seconds: number) {
   return `${minutes}:${remainder}`;
 }
 
+function cacheFilename(url?: string) {
+  if (!url) {
+    return "";
+  }
+
+  const path = url.split(/[?#]/, 1)[0];
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+}
+
 function PlaybackSignal({
   label,
   paused = false,
@@ -1760,7 +1769,7 @@ export function RoutePlayer() {
                 {cacheProgress.percent}% cached. All route audio is downloaded before the drive starts, then played from Cache API storage.
               </p>
               <p className="cache-current" aria-live="polite">
-                {cacheProgress.currentUrl && cacheProgress.percent < 100 ? `Downloading ${cacheProgress.currentUrl}` : ""}
+                {cacheProgress.currentUrl && cacheProgress.percent < 100 ? `Downloading ${cacheFilename(cacheProgress.currentUrl)}` : ""}
               </p>
               <p>Location is requested on Begin Drive so the app can arm stops while foregrounded. If it is off, every stop still works by hand.</p>
               {cacheError && <p className="cache-error">{cacheError}</p>}
