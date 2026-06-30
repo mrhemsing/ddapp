@@ -1254,7 +1254,8 @@ export function RoutePlayer() {
                     <strong>{selectedLoop.title}</strong>
                     <span>{selectedLoop.subtitle}</span>
                     <em>
-                      {selectedLoopLiveCount} live stop{selectedLoopLiveCount === 1 ? "" : "s"} · {selectedLoop.estimatedDuration} · finale: {selectedLoopFinale}
+                      <span>{selectedLoopLiveCount} live stop{selectedLoopLiveCount === 1 ? "" : "s"} · {selectedLoop.estimatedDuration}</span>
+                      <span>finale: {selectedLoopFinale}</span>
                     </em>
                   </div>
                   <button className="small-button" onClick={() => setIsLoopPickerOpen(true)}>Change loop</button>

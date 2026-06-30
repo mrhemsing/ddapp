@@ -809,6 +809,11 @@ button {
   text-transform: uppercase;
 }
 
+.loop-summary em span {
+  color: inherit;
+  display: block;
+}
+
 .loop-button {
   display: grid;
   gap: 4px;
