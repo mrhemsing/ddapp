@@ -311,18 +311,10 @@ button {
 
 .legal-point {
   display: grid;
-  grid-template-columns: 28px 1fr;
-  gap: 10px;
+  gap: 8px;
   border: 1px solid rgba(230, 225, 214, 0.12);
   background: rgba(10, 9, 8, 0.58);
   padding: 12px;
-}
-
-.legal-point span {
-  color: var(--blood-hot);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 900;
 }
 
 .legal-point strong {
@@ -417,6 +409,7 @@ button {
   grid-template-columns: 22px 1fr;
   gap: 10px;
   align-items: start;
+  margin-block: 8px;
   color: var(--bone-dim);
   line-height: 1.35;
 }

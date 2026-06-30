@@ -230,11 +230,8 @@ function LegalGate({
       <div className="legal-points">
         {legalAcknowledgmentPoints.map((point, index) => (
           <div className="legal-point" key={point.title}>
-            <span>{index + 1}</span>
-            <div>
-              <strong>{point.title}</strong>
-              <p>{point.body}</p>
-            </div>
+            <strong>{index + 1} {point.title}</strong>
+            <p>{point.body}</p>
           </div>
         ))}
       </div>
