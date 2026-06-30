@@ -277,11 +277,6 @@ function PlaybackSignal({
 
   return (
     <div className={`playback-signal ${variant === "ritual" ? "ritual-playback" : "drive-playback"}`} data-paused={paused}>
-      <div className={`signal-meter ${variant === "ritual" ? "ritual-signal" : "drive-signal"}`} data-paused={paused} aria-label={label}>
-        {Array.from({ length: bars }, (_, index) => (
-          <span key={index} style={{ height: `${variant === "ritual" ? 26 + ((index * 23) % 68) : 22 + ((index * 19) % 74)}%` }} />
-        ))}
-      </div>
       <div
         className="playback-progress"
         role={onSeek ? "slider" : undefined}
@@ -309,6 +304,11 @@ function PlaybackSignal({
         }}
       >
         <div style={{ width: `${percent}%` }} />
+      </div>
+      <div className={`signal-meter ${variant === "ritual" ? "ritual-signal" : "drive-signal"}`} data-paused={paused} aria-label={label}>
+        {Array.from({ length: bars }, (_, index) => (
+          <span key={index} style={{ height: `${variant === "ritual" ? 26 + ((index * 23) % 68) : 22 + ((index * 19) % 74)}%` }} />
+        ))}
       </div>
       {paused && progress && (
         <div className="playback-time">
