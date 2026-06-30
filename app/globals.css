@@ -546,7 +546,7 @@ button {
 .welcome-loop-track {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 24px;
   padding-block: 112px;
 }
 
@@ -558,13 +558,13 @@ button {
   --focus-blur: 0px;
   --focus-dark: 0;
   gap: 6px;
-  min-height: 168px;
+  min-height: 190px;
   border: 1px solid rgba(230, 225, 214, 0.12);
   border-radius: 4px;
   background: linear-gradient(180deg, rgba(18, 18, 17, 0.96), rgba(12, 12, 11, 0.96));
   color: var(--bone);
   cursor: pointer;
-  padding: 20px;
+  padding: 22px 20px;
   scroll-snap-align: center;
   text-align: left;
   text-decoration: none;
