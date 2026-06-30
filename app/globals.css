@@ -422,18 +422,21 @@ button {
 
 .welcome-screen {
   display: grid;
-  gap: 18px;
-  padding-block: 8px 18px;
+  grid-template-rows: auto auto minmax(320px, 1fr);
+  min-height: 0;
+  flex: 1;
+  gap: 14px;
+  padding-block: 6px 0;
 }
 
 .welcome-intro {
   display: grid;
   gap: 12px;
-  padding-block: 18px 8px;
+  padding-block: 8px 0;
 }
 
 .welcome-intro.compact {
-  padding-block: 10px 0;
+  padding-block: 6px 0;
 }
 
 .welcome-intro h2 {
@@ -455,11 +458,6 @@ button {
   color: var(--bone-dim);
   font-size: 15px;
   line-height: 1.45;
-}
-
-.welcome-loop-list {
-  display: grid;
-  gap: 10px;
 }
 
 .closest-loop-row {
@@ -523,34 +521,117 @@ button {
   }
 }
 
+.welcome-loop-stage {
+  position: relative;
+  height: clamp(340px, 50svh, 450px);
+  min-height: 0;
+}
+
+.welcome-loop-scroller {
+  height: 100%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-inline: 0 12px;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16%, #000 84%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 16%, #000 84%, transparent 100%);
+}
+
+.welcome-loop-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.welcome-loop-track {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-block: 112px;
+}
+
 .welcome-loop-card {
+  position: relative;
   display: grid;
   gap: 6px;
-  min-height: 142px;
+  min-height: 168px;
   border: 1px solid rgba(230, 225, 214, 0.12);
-  border-radius: 2px;
-  background:
-    linear-gradient(90deg, rgba(159, 0, 11, 0.18), transparent 54%),
-    rgba(10, 9, 8, 0.68);
+  border-radius: 4px;
+  background: linear-gradient(180deg, rgba(18, 18, 17, 0.96), rgba(12, 12, 11, 0.96));
   color: var(--bone);
   cursor: pointer;
-  padding: 14px;
+  padding: 20px;
+  scroll-snap-align: center;
   text-align: left;
   text-decoration: none;
   transition:
     border-color 160ms ease,
     background 160ms ease,
+    box-shadow 160ms ease,
+    filter 160ms ease,
+    opacity 160ms ease,
     transform 160ms ease;
 }
 
-.welcome-loop-card:first-child {
-  border-color: rgba(114, 255, 87, 0.34);
-  box-shadow: inset 0 0 18px rgba(114, 255, 87, 0.08);
+.welcome-loop-card::before,
+.welcome-loop-card::after {
+  pointer-events: none;
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-color: var(--sick);
+  opacity: 0;
+  transition: opacity 160ms ease;
 }
 
-.welcome-loop-card[data-closest="true"] {
+.welcome-loop-card::before {
+  top: -1px;
+  left: -1px;
+  border-top: 1px solid;
+  border-left: 1px solid;
+}
+
+.welcome-loop-card::after {
+  right: -1px;
+  bottom: -1px;
+  border-right: 1px solid;
+  border-bottom: 1px solid;
+}
+
+.welcome-loop-card[data-active="true"] {
   border-color: rgba(114, 255, 87, 0.52);
-  box-shadow: inset 0 0 20px rgba(114, 255, 87, 0.1);
+  box-shadow:
+    0 0 0 1px rgba(114, 255, 87, 0.2),
+    0 18px 50px rgba(0, 0, 0, 0.58),
+    inset 0 0 24px rgba(114, 255, 87, 0.08);
+}
+
+.welcome-loop-card[data-active="true"]::before,
+.welcome-loop-card[data-active="true"]::after {
+  opacity: 1;
+}
+
+.welcome-loop-card[data-active="false"] {
+  filter: blur(1.8px);
+  opacity: 0.48;
+  transform: scale(0.94);
+}
+
+.welcome-card-dark {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  background:
+    radial-gradient(110% 82% at 50% 50%, transparent 34%, rgba(3, 3, 3, 0.74) 100%),
+    linear-gradient(180deg, rgba(3, 3, 3, 0.2), rgba(3, 3, 3, 0.34));
+  opacity: 0.3;
+  transition: opacity 160ms ease;
+}
+
+.welcome-loop-card[data-active="true"] .welcome-card-dark {
+  opacity: 0;
 }
 
 .welcome-loop-card[data-marathon="true"] {
@@ -603,6 +684,123 @@ button {
   font-weight: 900;
   letter-spacing: 0.08em;
   line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.welcome-loop-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--sick);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  opacity: 0;
+  text-transform: uppercase;
+  transform: translateY(4px);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.welcome-loop-pick svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+}
+
+.welcome-loop-card[data-active="true"] .welcome-loop-pick {
+  opacity: 1;
+  transform: none;
+}
+
+.welcome-loop-rail {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  transform: translateY(-50%);
+}
+
+.welcome-loop-rail span {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(230, 225, 214, 0.16);
+  transition:
+    background 160ms ease,
+    box-shadow 160ms ease,
+    height 160ms ease;
+}
+
+.welcome-loop-rail .on {
+  height: 18px;
+  border-radius: 3px;
+  background: var(--sick);
+  box-shadow: 0 0 10px rgba(114, 255, 87, 0.6);
+}
+
+.welcome-loop-count {
+  position: absolute;
+  bottom: 8px;
+  left: 0;
+  z-index: 2;
+  color: var(--ash);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.welcome-loop-count strong {
+  color: var(--sick);
+}
+
+.welcome-loop-flash {
+  pointer-events: none;
+  position: absolute;
+  inset: 0 12px 0 0;
+  z-index: 5;
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  background: rgba(3, 3, 3, 0.86);
+  opacity: 0;
+  padding: 28px;
+  text-align: center;
+  transition: opacity 180ms ease;
+}
+
+.welcome-loop-flash[data-show="true"] {
+  opacity: 1;
+}
+
+.welcome-loop-flash span,
+.welcome-loop-flash em {
+  color: var(--sick);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.welcome-loop-flash em {
+  color: var(--ash);
+}
+
+.welcome-loop-flash strong {
+  color: var(--bone);
+  font-family: var(--font-display);
+  font-size: 30px;
+  line-height: 1;
   text-transform: uppercase;
 }
 

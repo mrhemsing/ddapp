@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LocateFixed, Navigation, Play } from "lucide-react";
+import { ArrowRight, LocateFixed, Navigation, Play } from "lucide-react";
 import { cacheRouteAudio, isRouteCached, type CacheProgress } from "@/lib/audio-cache";
 import { DarkDrivesAudioEngine } from "@/lib/audio-engine";
 import type { PlaybackProgress } from "@/lib/audio-engine";
@@ -464,11 +464,16 @@ export function RoutePlayer() {
   const [hasSeenWelcome, setHasSeenWelcome] = useState(false);
   const [welcomePosition, setWelcomePosition] = useState<PositionFix | null>(null);
   const [welcomeLocationStatus, setWelcomeLocationStatus] = useState<"idle" | "requesting" | "enabled" | "denied" | "far">("idle");
+  const [welcomeActiveLoopIndex, setWelcomeActiveLoopIndex] = useState(0);
+  const [welcomeFlashLoopName, setWelcomeFlashLoopName] = useState("");
   const [shareStatus, setShareStatus] = useState("");
   const [pendingSkipStopId, setPendingSkipStopId] = useState<string | null>(null);
   const audioEngine = useRef<DarkDrivesAudioEngine | null>(null);
   const screenRef = useRef<HTMLElement | null>(null);
   const wakeLock = useRef(createWakeLockHandle());
+  const welcomeScroller = useRef<HTMLDivElement | null>(null);
+  const welcomeCards = useRef<Array<HTMLAnchorElement | null>>([]);
+  const welcomeSelectTimer = useRef<number | null>(null);
   const playbackToken = useRef(0);
   const ritualPlaybackToken = useRef(0);
   const lastLocationUpdate = useRef(0);
@@ -595,6 +600,19 @@ export function RoutePlayer() {
   useEffect(() => {
     setHasSeenWelcome(window.localStorage.getItem(welcomeSeenStorageKey) === "true");
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (welcomeSelectTimer.current !== null) {
+        window.clearTimeout(welcomeSelectTimer.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    setWelcomeActiveLoopIndex(0);
+    welcomeScroller.current?.scrollTo({ top: 0, behavior: "auto" });
+  }, [welcomeLoops.map((loop) => loop.id).join("|")]);
 
   useEffect(() => {
     const accepted = isCurrentLegalAcceptance(window.localStorage.getItem(legalAcceptanceStorageKey));
@@ -1264,6 +1282,52 @@ export function RoutePlayer() {
     }
   }
 
+  function updateWelcomeActiveLoop() {
+    const scroller = welcomeScroller.current;
+    if (!scroller) {
+      return;
+    }
+
+    const scrollerRect = scroller.getBoundingClientRect();
+    const centerY = scrollerRect.top + scrollerRect.height / 2;
+    let closestIndex = 0;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    welcomeCards.current.forEach((card, index) => {
+      if (!card) {
+        return;
+      }
+
+      const rect = card.getBoundingClientRect();
+      const distance = Math.abs(rect.top + rect.height / 2 - centerY);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIndex = index;
+      }
+    });
+
+    setWelcomeActiveLoopIndex(closestIndex);
+  }
+
+  function chooseWelcomeLoop(loop: WelcomeLoop, index: number) {
+    if (index !== welcomeActiveLoopIndex) {
+      welcomeCards.current[index]?.scrollIntoView({ block: "center", behavior: "smooth" });
+      return;
+    }
+
+    if (welcomeSelectTimer.current !== null) {
+      window.clearTimeout(welcomeSelectTimer.current);
+    }
+
+    navigator.vibrate?.([10, 40, 10]);
+    setWelcomeFlashLoopName(loop.title);
+    welcomeSelectTimer.current = window.setTimeout(() => {
+      setWelcomeFlashLoopName("");
+      selectLoop(loop.id);
+      welcomeSelectTimer.current = null;
+    }, 900);
+  }
+
   function switchLoopMidDrive(loopId: string) {
     if (!route || loopId === selectedLoop?.id) {
       return;
@@ -1589,19 +1653,10 @@ export function RoutePlayer() {
             </div>
           ) : isChoosingLoop ? (
             <div className="welcome-screen" aria-label="Choose your night">
-              {!hasSeenWelcome && (
-                <div className="welcome-intro">
-                  <span className="stop-count">Choose your night</span>
-                  <h2>Dark Drives is a haunted route you run from the car after dark.</h2>
-                  <p>One person drives with their own maps. One person holds this phone and becomes the host.</p>
-                </div>
-              )}
-              {hasSeenWelcome && (
-                <div className="welcome-intro compact">
-                  <span className="stop-count">Choose your night</span>
-                  <h2>Pick the loop for tonight.</h2>
-                </div>
-              )}
+              <div className="welcome-intro compact">
+                <span className="stop-count">Choose your night</span>
+                <h2>Pick the loop for tonight.</h2>
+              </div>
               <div className="closest-loop-row">
                 <button
                   className="location-link"
@@ -1617,34 +1672,60 @@ export function RoutePlayer() {
                 {welcomeLocationStatus === "denied" && <span>Location skipped. The start areas below still work.</span>}
                 {welcomeLocationStatus === "far" && <span>You do not look near Saskatoon. Showing start areas instead.</span>}
               </div>
-              <div className="welcome-loop-list">
-                {welcomeLoops.map((loop) => (
-                  <a
-                    className="welcome-loop-card"
-                    data-closest={loop.isClosest}
-                    data-marathon={loop.isMarathon}
-                    href={loopHref(loop.id)}
-                    key={loop.id}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      selectLoop(loop.id);
-                    }}
-                  >
-                    <div className="welcome-loop-title">
-                      <strong>{loop.title}</strong>
-                      {loop.isClosest && <span>Closest</span>}
-                      {loop.isMarathon && <span>Marathon</span>}
-                    </div>
-                    <span>{loop.subtitle}</span>
-                    <span>Starts {loop.startNeighborhood}: {loop.startStop?.title ?? "first live stop"}</span>
-                    <span>Covers {loop.coverage}</span>
-                    <em>{loop.estimatedDuration} / finale: {loopFinaleTitle(loop)}</em>
-                    {loop.distanceMeters !== null && welcomeLocationStatus === "enabled" && (
-                      <em>First stop about {formatApproxDistance(loop.distanceMeters)} away, straight line</em>
-                    )}
-                    {loop.isMarathon && <em>Marathon, all 39 stops, a serious commitment</em>}
-                  </a>
-                ))}
+              <div className="welcome-loop-stage">
+                <div className="welcome-loop-scroller" ref={welcomeScroller} onScroll={updateWelcomeActiveLoop}>
+                  <div className="welcome-loop-track">
+                    {welcomeLoops.map((loop, index) => (
+                      <a
+                        className="welcome-loop-card"
+                        data-active={index === welcomeActiveLoopIndex}
+                        data-closest={loop.isClosest}
+                        data-marathon={loop.isMarathon}
+                        href={loopHref(loop.id)}
+                        key={loop.id}
+                        ref={(element) => {
+                          welcomeCards.current[index] = element;
+                        }}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          chooseWelcomeLoop(loop, index);
+                        }}
+                      >
+                        <span className="welcome-card-dark" aria-hidden />
+                        <div className="welcome-loop-title">
+                          <strong>{loop.title}</strong>
+                          {loop.isClosest && <span>Closest</span>}
+                          {loop.isMarathon && <span>Marathon</span>}
+                        </div>
+                        <span>{loop.subtitle}</span>
+                        <span>Starts {loop.startNeighborhood}: {loop.startStop?.title ?? "first live stop"}</span>
+                        <span>Covers {loop.coverage}</span>
+                        <em>{loop.estimatedDuration} / finale: {loopFinaleTitle(loop)}</em>
+                        {loop.distanceMeters !== null && welcomeLocationStatus === "enabled" && (
+                          <em>First stop about {formatApproxDistance(loop.distanceMeters)} away, straight line</em>
+                        )}
+                        {loop.isMarathon && <em>Marathon, all 39 stops, a serious commitment</em>}
+                        <span className="welcome-loop-pick">
+                          <ArrowRight aria-hidden="true" />
+                          Tap to choose this night
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+                <div className="welcome-loop-rail" aria-hidden>
+                  {welcomeLoops.map((loop, index) => (
+                    <span className={index === welcomeActiveLoopIndex ? "on" : ""} key={loop.id} />
+                  ))}
+                </div>
+                <div className="welcome-loop-count">
+                  Loop <strong>{String(welcomeActiveLoopIndex + 1).padStart(2, "0")}</strong> / {String(welcomeLoops.length).padStart(2, "0")}
+                </div>
+                <div className="welcome-loop-flash" data-show={Boolean(welcomeFlashLoopName)} aria-hidden={!welcomeFlashLoopName}>
+                  <span>Route locked</span>
+                  <strong>{welcomeFlashLoopName || "Route"}</strong>
+                  <em>Preparing in a moment</em>
+                </div>
               </div>
             </div>
           ) : !currentStop ? (
