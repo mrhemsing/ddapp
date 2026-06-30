@@ -1433,9 +1433,9 @@ export function RoutePlayer() {
               <p>
                 {cacheProgress.percent}% cached. All route audio is downloaded before the drive starts, then played from Cache API storage.
               </p>
-              {cacheProgress.currentUrl && cacheProgress.percent < 100 && (
-                <p className="cache-current">Downloading {cacheProgress.currentUrl}</p>
-              )}
+              <p className="cache-current" aria-live="polite">
+                {cacheProgress.currentUrl && cacheProgress.percent < 100 ? `Downloading ${cacheProgress.currentUrl}` : ""}
+              </p>
               <p>Location is requested on Begin Drive so the app can arm stops while foregrounded. If it is off, every stop still works by hand.</p>
               {cacheError && <p className="cache-error">{cacheError}</p>}
             </div>
