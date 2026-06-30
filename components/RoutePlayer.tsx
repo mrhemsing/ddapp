@@ -485,6 +485,7 @@ export function RoutePlayer() {
   const completedLoopIdSet = useMemo(() => new Set(completedLoopIds), [completedLoopIds]);
   const nextUnfinishedLoop = authoredLoops.find((loop) => !completedLoopIdSet.has(loop.id));
   const loopsLeftTonight = authoredLoops.filter((loop) => !completedLoopIdSet.has(loop.id)).length;
+  const isPrepared = cacheProgress.percent === 100;
   const statusLabel = !route
     ? routeError ? "Locked" : "Loading"
     : resumeState && isPreDrive ? "Resume"
@@ -522,7 +523,12 @@ export function RoutePlayer() {
         }
 
         const data = (await response.json()) as RoutePack;
+        const cached = await isRouteCached(data);
         if (active) {
+          if (cached) {
+            setCacheProgress({ complete: 1, total: 1, percent: 100 });
+            setPlayerState("ready");
+          }
           setRoute(data);
         }
       } catch (error) {
@@ -1620,7 +1626,17 @@ export function RoutePlayer() {
             <button className="secondary" onClick={() => window.open(mapsUrl(currentStop), "_blank", "noopener,noreferrer")}>
               Drive There
             </button>
-            <button className="secondary" onClick={() => setIsStopsBoardOpen((open) => !open)}>
+            <button
+              aria-label={isPrepared ? "Stops" : "Stops locked, prepare first"}
+              className="secondary stops-gate"
+              data-locked={!isPrepared}
+              disabled={!isPrepared}
+              onClick={() => {
+                if (isPrepared) {
+                  setIsStopsBoardOpen((open) => !open);
+                }
+              }}
+            >
               Stops
             </button>
             {!isPreDrive && (

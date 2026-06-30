@@ -566,6 +566,30 @@ button {
   opacity: 0.42;
 }
 
+.stops-gate {
+  position: relative;
+  overflow: hidden;
+}
+
+.stops-gate[data-locked="true"] {
+  border-color: rgba(114, 255, 87, 0.16);
+  background:
+    linear-gradient(90deg, rgba(114, 255, 87, 0.06), transparent 62%),
+    rgba(10, 9, 8, 0.5);
+  color: var(--ash);
+  opacity: 1;
+}
+
+.stops-gate[data-locked="true"]::after {
+  content: "PREPARE FIRST";
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  color: rgba(114, 255, 87, 0.58);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
 .small-button {
   min-height: 44px;
   padding: 0 14px;
