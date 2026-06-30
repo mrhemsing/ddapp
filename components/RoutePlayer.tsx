@@ -497,6 +497,8 @@ export function RoutePlayer() {
   }, [selectedLoop]);
   const isDriveActive = activeDriveStates.includes(playerState);
   const isPreDrive = playerState === "preflight" || playerState === "ready" || playerState === "introPlayed";
+  const isLoopLanding = playerState === "preflight" || playerState === "ready" || playerState === "intro" || playerState === "introPlayed";
+  const isStopPage = !isLoopLanding;
   const isChoosingLoop = Boolean(route && hasCheckedResume && routeHasLoops && !selectedLoop && isPreDrive && !resumeState);
   const heartbeatMs = Math.round(2200 - approachIntensity * 1500);
   const stats = recapStats(sessionEvents);
@@ -518,7 +520,7 @@ export function RoutePlayer() {
     (playerState === "traveling" || playerState === "approaching" || playerState === "armed")
   );
   const skipLabel = needsSkipConfirm && pendingSkipStopId === currentStop?.id ? "Confirm Skip" : "Skip";
-  const screenClassName = ["screen", isDriveActive ? "drive-active" : ""].filter(Boolean).join(" ");
+  const screenClassName = ["screen", isStopPage && isDriveActive ? "drive-active" : ""].filter(Boolean).join(" ");
   const selectedLoopLiveCount = activeStops.length;
   const selectedLoopHeldCount = selectedLoopSealedStops.length;
   const selectedLoopFinale = activeStops.at(-1)?.title ?? currentStop?.title ?? "Final stop";
@@ -1223,6 +1225,7 @@ export function RoutePlayer() {
 
   function selectLoop(loopId: string, options: { updateUrl?: boolean } = {}) {
     if (loopId === selectedLoop?.id) {
+      setIsLoopPickerOpen(false);
       return;
     }
 
@@ -1655,7 +1658,7 @@ export function RoutePlayer() {
             </div>
           ) : (
             <>
-          {route.loops && route.loops.length > 0 && isPreDrive && (
+          {route.loops && route.loops.length > 0 && isLoopLanding && (
             <div className="panel loop-panel">
               <span className="corner-a" aria-hidden />
               <span className="corner-b" aria-hidden />
@@ -1673,7 +1676,9 @@ export function RoutePlayer() {
                       <span>finale: {selectedLoopFinale}</span>
                     </em>
                   </div>
-                  <button className="small-button" onClick={() => setIsLoopPickerOpen(true)}>Change loop</button>
+                  {(playerState === "preflight" || playerState === "ready") && (
+                    <button className="small-button" onClick={() => setIsLoopPickerOpen(true)}>Change loop</button>
+                  )}
                 </div>
               ) : (
                 <div className="loop-list">
@@ -1716,16 +1721,18 @@ export function RoutePlayer() {
             </div>
           )}
 
-          <div className="hero">
-            <span className="stop-count">
-              {selectedLoop?.title ?? "Route"} / Stop {activeStopIndex + 1} of {activeStops.length}
-            </span>
-            <h2 className="stop-name">{currentStop.title}</h2>
-            <div className="presence" data-state={playerState}>
-              <span className="presence-dot" aria-hidden />
-              <span>{presenceCopy(playerState, distanceMeters, narrationPlayback)}</span>
+          {isStopPage && (
+            <div className="hero">
+              <span className="stop-count">
+                {selectedLoop?.title ?? "Route"} / Stop {activeStopIndex + 1} of {activeStops.length}
+              </span>
+              <h2 className="stop-name">{currentStop.title}</h2>
+              <div className="presence" data-state={playerState}>
+                <span className="presence-dot" aria-hidden />
+                <span>{presenceCopy(playerState, distanceMeters, narrationPlayback)}</span>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="transport-cluster">
             <button className={`primary ${primary.className}`} disabled={primary.disabled} onClick={handlePrimary}>
@@ -1746,57 +1753,55 @@ export function RoutePlayer() {
             )}
           </div>
 
-          <div className="secondary-row">
-            <button className="secondary directions-button" onClick={() => window.open(mapsUrl(currentStop), "_blank", "noopener,noreferrer")}>
-              <Navigation className="directions-icon" aria-hidden="true" />
-              <span>Directions</span>
-            </button>
-            <button
-              aria-label={isPrepared ? "Stops" : "Stops locked, prepare first"}
-              className="secondary stops-gate"
-              data-locked={!isPrepared}
-              disabled={!isPrepared}
-              onClick={() => {
-                if (isPrepared) {
-                  setIsStopsBoardOpen((open) => !open);
-                }
-              }}
-            >
-              Stops
-            </button>
-            {!isPreDrive && (
-              <>
-                {playerState === "intro" ? null : playerState === "played" ? (
-                  <>
-                    <button className="secondary" onClick={() => void advanceAfterPlayed()}>
-                      {activeStopIndex === activeStops.length - 1 ? "Close Route" : "Next File"}
-                    </button>
-                    {activeStopIndex < activeStops.length - 1 && (
-                      <button className="secondary" onClick={skipCurrentStop} disabled={!canSkip}>
-                        Skip
-                      </button>
-                    )}
-                  </>
-                ) : playerState === "outroPlayed" ? (
-                  <button className="secondary" onClick={() => void closeRouteAfterOutro()}>
-                    Close Route
+          {isStopPage && (
+            <div className="secondary-row">
+              <button className="secondary directions-button" onClick={() => window.open(mapsUrl(currentStop), "_blank", "noopener,noreferrer")}>
+                <Navigation className="directions-icon" aria-hidden="true" />
+                <span>Directions</span>
+              </button>
+              <button
+                aria-label={isPrepared ? "Stops" : "Stops locked, prepare first"}
+                className="secondary stops-gate"
+                data-locked={!isPrepared}
+                disabled={!isPrepared}
+                onClick={() => {
+                  if (isPrepared) {
+                    setIsStopsBoardOpen((open) => !open);
+                  }
+                }}
+              >
+                Stops
+              </button>
+              {playerState === "played" ? (
+                <>
+                  <button className="secondary" onClick={() => void advanceAfterPlayed()}>
+                    {activeStopIndex === activeStops.length - 1 ? "Close Route" : "Next File"}
                   </button>
-                ) : playerState === "outro" ? null : (
-                  <>
-                    <button className="secondary im-here-button" onClick={() => void armManually()} disabled={!canArmManually}>
-                      <Play className="im-here-icon" aria-hidden="true" fill="currentColor" />
-                      <span>I&apos;m Here</span>
-                    </button>
+                  {activeStopIndex < activeStops.length - 1 && (
                     <button className="secondary" onClick={skipCurrentStop} disabled={!canSkip}>
-                      {skipLabel}
+                      Skip
                     </button>
-                  </>
-                )}
-              </>
-            )}
-          </div>
+                  )}
+                </>
+              ) : playerState === "outroPlayed" ? (
+                <button className="secondary" onClick={() => void closeRouteAfterOutro()}>
+                  Close Route
+                </button>
+              ) : playerState === "outro" ? null : (
+                <>
+                  <button className="secondary im-here-button" onClick={() => void armManually()} disabled={!canArmManually}>
+                    <Play className="im-here-icon" aria-hidden="true" fill="currentColor" />
+                    <span>I&apos;m Here</span>
+                  </button>
+                  <button className="secondary" onClick={skipCurrentStop} disabled={!canSkip}>
+                    {skipLabel}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
 
-          {isStopsBoardOpen && (
+          {isStopPage && isStopsBoardOpen && (
             <div className="panel stops-board" aria-label="Stops board">
               <span className="corner-a" aria-hidden />
               <span className="corner-b" aria-hidden />
@@ -1844,7 +1849,7 @@ export function RoutePlayer() {
             </div>
           )}
 
-          {currentStop.rituals && (playerState === "armed" || playerState === "playing" || playerState === "played") && (
+          {isStopPage && currentStop.rituals && (playerState === "armed" || playerState === "playing" || playerState === "played") && (
             <div className="ritual-panel" aria-label="Ritual actions">
               <span className="tiny">Ritual</span>
               {currentStop.rituals.map((ritual) => {
@@ -1888,22 +1893,22 @@ export function RoutePlayer() {
             </div>
           )}
 
-          {playerState !== "preflight" && (
+          {isStopPage && (
             <details className="map-drawer">
               <summary>Route signal</summary>
               <RouteMap stops={activeStops} activeStopIndex={activeStopIndex} currentPosition={currentPosition} />
             </details>
           )}
 
-          {playerState === "preflight" && (
+          {isLoopLanding && (
             <div className="panel">
               <span className="corner-a" aria-hidden />
               <span className="corner-b" aria-hidden />
               <div className="file-row">
                 <span className="file-tab">FILE 01</span>
-                <span className="sealed">SEALED</span>
+                <span className="sealed">{isPrepared ? "READY" : "SEALED"}</span>
               </div>
-              <h2>Preparing your haunting</h2>
+              <h2>{isPrepared ? "Files sealed" : "Preparing your haunting"}</h2>
               <div className="progress-track" aria-label="Download progress">
                 <div className="progress-bar" style={{ width: `${cacheProgress.percent}%` }} />
               </div>
@@ -1918,16 +1923,15 @@ export function RoutePlayer() {
             </div>
           )}
 
-          {playerState !== "preflight" && (
+          {isStopPage && (
             <div className="panel">
               <span className="corner-a" aria-hidden />
               <span className="corner-b" aria-hidden />
               <div className="file-row">
-                <span className="file-tab">{playerState === "ready" ? "START HERE" : `STOP ${String(activeStopIndex + 1).padStart(2, "0")}`}</span>
-                <span className="sealed">{playerState === "ready" ? "READY" : playerState === "armed" ? "OPENING" : playerState === "playing" ? "ON AIR" : "OPEN"}</span>
+                <span className="file-tab">STOP {String(activeStopIndex + 1).padStart(2, "0")}</span>
+                <span className="sealed">{playerState === "armed" ? "OPENING" : playerState === "playing" ? "ON AIR" : "OPEN"}</span>
               </div>
-              <h2>{playerState === "ready" ? currentStop.title : stateCopy(playerState)}</h2>
-              {playerState === "ready" && <p>{currentStop.story.teaser}</p>}
+              <h2>{stateCopy(playerState)}</h2>
               {locationMode === "denied" && <p>Location is off. You will arm each stop yourself.</p>}
               <p className="safety-line">{currentStop.safetyNote}</p>
               <details className="read-disclosure">
