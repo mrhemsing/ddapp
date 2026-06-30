@@ -335,6 +335,7 @@ export function RoutePlayer() {
   const [welcomePosition, setWelcomePosition] = useState<PositionFix | null>(null);
   const [welcomeLocationStatus, setWelcomeLocationStatus] = useState<"idle" | "requesting" | "enabled" | "denied" | "far">("idle");
   const [shareStatus, setShareStatus] = useState("");
+  const [pendingSkipStopId, setPendingSkipStopId] = useState<string | null>(null);
   const audioEngine = useRef<DarkDrivesAudioEngine | null>(null);
   const screenRef = useRef<HTMLElement | null>(null);
   const wakeLock = useRef(createWakeLockHandle());
@@ -378,13 +379,15 @@ export function RoutePlayer() {
     route &&
     currentStop &&
     activeStopIndex < activeStops.length - 1 &&
-    (playerState === "traveling" || playerState === "approaching" || playerState === "armed")
+    (playerState === "traveling" || playerState === "approaching" || playerState === "armed" || playerState === "playing" || playerState === "played")
   );
+  const needsSkipConfirm = playerState === "playing" && narrationPlayback !== "idle";
   const canArmManually = Boolean(
     route &&
     currentStop &&
     (playerState === "traveling" || playerState === "approaching" || playerState === "armed")
   );
+  const skipLabel = needsSkipConfirm && pendingSkipStopId === currentStop?.id ? "Confirm Skip" : "Skip";
   const screenClassName = ["screen", isDriveActive ? "drive-active" : ""].filter(Boolean).join(" ");
   const selectedLoopLiveCount = activeStops.length;
   const selectedLoopHeldCount = selectedLoopSealedStops.length;
@@ -625,6 +628,10 @@ export function RoutePlayer() {
     update();
     return () => window.cancelAnimationFrame(frameId);
   }, [narrationPlayback, ritualPlayback]);
+
+  useEffect(() => {
+    setPendingSkipStopId(null);
+  }, [activeStopIndex, playerState]);
 
   useEffect(() => {
     if (!route || !currentStop || !isForeground || (playerState !== "traveling" && playerState !== "approaching" && playerState !== "armed")) {
@@ -1178,6 +1185,12 @@ export function RoutePlayer() {
       return;
     }
 
+    if (needsSkipConfirm && pendingSkipStopId !== currentStop.id) {
+      setPendingSkipStopId(currentStop.id);
+      return;
+    }
+
+    setPendingSkipStopId(null);
     if (!completedStopIds.has(currentStop.id)) {
       setSkippedStopIds((ids) => (ids.includes(currentStop.id) ? ids : [...ids, currentStop.id]));
     }
@@ -1542,9 +1555,16 @@ export function RoutePlayer() {
                     Start Drive
                   </button>
                 ) : playerState === "played" ? (
-                  <button className="secondary" onClick={() => void advanceAfterPlayed()}>
-                    {activeStopIndex === activeStops.length - 1 ? "Close Route" : "Next File"}
-                  </button>
+                  <>
+                    <button className="secondary" onClick={() => void advanceAfterPlayed()}>
+                      {activeStopIndex === activeStops.length - 1 ? "Close Route" : "Next File"}
+                    </button>
+                    {activeStopIndex < activeStops.length - 1 && (
+                      <button className="secondary" onClick={skipCurrentStop} disabled={!canSkip}>
+                        Skip
+                      </button>
+                    )}
+                  </>
                 ) : playerState === "outroPlayed" ? (
                   <button className="secondary" onClick={() => void closeRouteAfterOutro()}>
                     Close Route
@@ -1555,7 +1575,7 @@ export function RoutePlayer() {
                       I&apos;m Here
                     </button>
                     <button className="secondary" onClick={skipCurrentStop} disabled={!canSkip}>
-                      Skip
+                      {skipLabel}
                     </button>
                   </>
                 )}
