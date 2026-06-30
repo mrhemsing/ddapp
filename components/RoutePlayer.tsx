@@ -27,6 +27,7 @@ type LocationMode = "unknown" | "watching" | "manual" | "denied";
 type NarrationPlayback = "idle" | "playing" | "paused";
 type RitualPlayback = "idle" | "playing" | "played";
 type LegalStatus = "checking" | "accepted" | "blocked";
+type ImHereState = "enroute" | "primed" | "arrived";
 const ROUTE_NARRATION_VOLUME = 1.45;
 const activeDriveStates: PlayerState[] = ["intro", "traveling", "approaching", "armed", "playing", "played", "outro", "outroPlayed"];
 const resumeStorageKey = "dark-drives:route-session";
@@ -472,6 +473,7 @@ export function RoutePlayer() {
   const [welcomeFlashLoopName, setWelcomeFlashLoopName] = useState("");
   const [shareStatus, setShareStatus] = useState("");
   const [pendingSkipStopId, setPendingSkipStopId] = useState<string | null>(null);
+  const [primedImHereStopId, setPrimedImHereStopId] = useState<string | null>(null);
   const audioEngine = useRef<DarkDrivesAudioEngine | null>(null);
   const screenRef = useRef<HTMLElement | null>(null);
   const wakeLock = useRef(createWakeLockHandle());
@@ -531,6 +533,11 @@ export function RoutePlayer() {
     (playerState === "traveling" || playerState === "approaching" || playerState === "armed")
   );
   const skipLabel = needsSkipConfirm && pendingSkipStopId === currentStop?.id ? "Confirm Skip" : "Skip";
+  const imHereState: ImHereState = playerState === "armed" || playerState === "playing" || playerState === "played"
+    ? "arrived"
+    : currentStop && primedImHereStopId === currentStop.id
+      ? "primed"
+      : "enroute";
   const screenClassName = ["screen", isStopPage && isDriveActive ? "drive-active" : ""].filter(Boolean).join(" ");
   const selectedLoopLiveCount = activeStops.length;
   const selectedLoopHeldCount = selectedLoopSealedStops.length;
@@ -1058,7 +1065,11 @@ export function RoutePlayer() {
       setLocationMode("manual");
     }
 
-    setPlayerState("traveling");
+    const startsAtFirstStop = activeStopIndex === 0;
+    hasAutoArmedStop.current = startsAtFirstStop;
+    setApproachIntensity(startsAtFirstStop ? 1 : 0);
+    setPrimedImHereStopId(null);
+    setPlayerState(startsAtFirstStop ? "armed" : "traveling");
     void wakeLock.current
       .request()
       .then(() => setWakeStatus(wakeLock.current.supported ? "Active" : "Unsupported"))
@@ -1147,6 +1158,7 @@ export function RoutePlayer() {
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
     setApproachIntensity(0);
+    setPrimedImHereStopId(null);
     hasAutoArmedStop.current = false;
     setPlayerState("traveling");
     if (legAudio) {
@@ -1201,6 +1213,17 @@ export function RoutePlayer() {
     await playCurrentStopNarration();
   }
 
+  function openCurrentStopDirections() {
+    if (!currentStop) {
+      return;
+    }
+
+    if (playerState === "traveling" || playerState === "approaching") {
+      setPrimedImHereStopId(currentStop.id);
+    }
+    window.open(mapsUrl(currentStop), "_blank", "noopener,noreferrer");
+  }
+
   function resetStopContext(nextIndex: number) {
     playbackToken.current += 1;
     audioEngine.current?.stopOneShots();
@@ -1211,6 +1234,7 @@ export function RoutePlayer() {
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
     setApproachIntensity(0);
+    setPrimedImHereStopId(null);
     setShareStatus("");
     setCurrentPosition(null);
     lastPositionFix.current = null;
@@ -1302,6 +1326,7 @@ export function RoutePlayer() {
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
     setApproachIntensity(0);
+    setPrimedImHereStopId(null);
     setCurrentPosition(null);
     setSkippedStopIds([]);
     setSessionEvents([]);
@@ -1411,6 +1436,7 @@ export function RoutePlayer() {
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
     setApproachIntensity(0);
+    setPrimedImHereStopId(null);
     setCurrentPosition(null);
     setSkippedStopIds([]);
     setSessionEvents([]);
@@ -1440,6 +1466,7 @@ export function RoutePlayer() {
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
     setApproachIntensity(0);
+    setPrimedImHereStopId(null);
     setCurrentPosition(null);
     setSkippedStopIds([]);
     setSessionEvents([]);
@@ -1469,6 +1496,7 @@ export function RoutePlayer() {
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
     setApproachIntensity(0);
+    setPrimedImHereStopId(null);
     setCurrentPosition(null);
     setLocationMode("unknown");
     setSkippedStopIds([]);
@@ -1535,6 +1563,7 @@ export function RoutePlayer() {
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
     setApproachIntensity(0);
+    setPrimedImHereStopId(null);
     setCurrentPosition(null);
     lastPositionFix.current = null;
     hasAutoArmedStop.current = false;
@@ -1911,7 +1940,7 @@ export function RoutePlayer() {
 
           {isStopPage && (
             <div className="secondary-row">
-              <button className="secondary directions-button" onClick={() => window.open(mapsUrl(currentStop), "_blank", "noopener,noreferrer")}>
+              <button className="secondary directions-button" onClick={openCurrentStopDirections}>
                 <Navigation className="directions-icon" aria-hidden="true" />
                 <span>Directions</span>
               </button>
@@ -1945,7 +1974,7 @@ export function RoutePlayer() {
                 </button>
               ) : playerState === "outro" ? null : (
                 <>
-                  <button className="secondary im-here-button" onClick={() => void armManually()} disabled={!canArmManually}>
+                  <button className="secondary im-here-button" data-state={imHereState} onClick={() => void armManually()} disabled={!canArmManually}>
                     <Play className="im-here-icon" aria-hidden="true" fill="currentColor" />
                     <span>I&apos;m Here</span>
                   </button>
