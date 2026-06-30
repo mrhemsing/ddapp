@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { voiceAuditionCandidates, voiceAuditionPassages } from "@/lib/voice-auditions";
+import { voiceAuditionCandidates, voiceAuditionPassages, voiceAuditionTargetReference } from "@/lib/voice-auditions";
 import { VoiceAuditionClient } from "./VoiceAuditionClient";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +20,7 @@ export default function VoiceAuditionPage() {
           <span className="kicker">Internal Tool</span>
           <h1>Voice Audition</h1>
           <p>
-            Compare saved narration samples on the same script, score the creep factor, and copy the winning voice config.
+            Compare saved narration samples against the grave documentary target, score the creep factor, and copy the winning voice config.
             Judge on headphones, then in a parked car if possible.
           </p>
         </div>
@@ -29,8 +29,13 @@ export default function VoiceAuditionPage() {
         </a>
       </header>
 
+      <section className="voice-audition-target" aria-label="Target reference">
+        <span className="kicker">{voiceAuditionTargetReference.label}</span>
+        <h2>{voiceAuditionTargetReference.title}</h2>
+        <p>{voiceAuditionTargetReference.description}</p>
+      </section>
+
       <VoiceAuditionClient candidates={voiceAuditionCandidates} passages={voiceAuditionPassages} />
     </main>
   );
 }
-
