@@ -22,10 +22,14 @@ export async function POST(request: Request) {
     create: { email }
   });
 
-  await createMagicLink(email, MagicLinkPurpose.signin, user.id);
+  const magicUrl = await createMagicLink(email, MagicLinkPurpose.signin, user.id);
+  const isDevMail = !process.env.RESEND_API_KEY || !process.env.EMAIL_FROM;
 
   return NextResponse.json({
     ok: true,
-    message: "Check your email for the admin sign-in link."
+    message: isDevMail
+      ? "Email is not configured on this server. Open the sign-in link below."
+      : "Check your email for the admin sign-in link.",
+    magicUrl: isDevMail ? magicUrl : undefined
   });
 }

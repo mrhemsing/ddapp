@@ -6,6 +6,7 @@ export function AdminSignInClient() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [magicUrl, setMagicUrl] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function requestLink(event: FormEvent<HTMLFormElement>) {
@@ -13,6 +14,7 @@ export function AdminSignInClient() {
     setBusy(true);
     setMessage("");
     setError("");
+    setMagicUrl("");
 
     const response = await fetch("/api/admin/auth/request-link", {
       method: "POST",
@@ -28,6 +30,7 @@ export function AdminSignInClient() {
     }
 
     setMessage(data.message ?? "Check your email for the admin sign-in link.");
+    setMagicUrl(data.magicUrl ?? "");
   }
 
   return (
@@ -50,6 +53,11 @@ export function AdminSignInClient() {
           {busy ? "Sending" : "Send sign-in link"}
         </button>
         {message ? <p className="admin-notice">{message}</p> : null}
+        {magicUrl ? (
+          <a className="admin-action admin-link-action" href={magicUrl}>
+            Open sign-in link
+          </a>
+        ) : null}
         {error ? <p className="admin-error">{error}</p> : null}
       </form>
     </main>

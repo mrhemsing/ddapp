@@ -32,6 +32,7 @@ export async function createMagicLink(emailInput: string, purpose: MagicLinkPurp
 
   const magicUrl = `${appUrl()}/activate?token=${encodeURIComponent(token)}`;
   await sendMagicLinkEmail({ email, magicUrl, purpose: purpose.toLowerCase() as "activate" | "signin" });
+  return magicUrl;
 }
 
 export async function issueDeviceSession(input: {
