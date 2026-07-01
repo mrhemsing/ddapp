@@ -46,7 +46,9 @@ export async function POST(request: Request) {
         status: toStatus(body.status),
         tourId: body.tourId ? String(body.tourId) : undefined,
         isStart: Boolean(body.isStart),
-        isFinale: Boolean(body.isFinale)
+        isFinale: Boolean(body.isFinale),
+        narrationAudio: String(body.narrationAudio ?? ""),
+        driveToNextAudio: String(body.driveToNextAudio ?? "")
       });
 
       await prisma.adminAuditLog.create({

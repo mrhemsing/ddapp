@@ -112,16 +112,19 @@ model AdminTour {
 }
 
 model TourStop {
-  id        String    @id @default(cuid())
-  tourId    String
-  stopId    String
-  position  Int
-  isStart   Boolean   @default(false)
-  isFinale  Boolean   @default(false)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  stop      AdminStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
-  tour      AdminTour @relation(fields: [tourId], references: [id], onDelete: Cascade)
+  id               String    @id @default(cuid())
+  tourId           String
+  stopId           String
+  position         Int
+  isStart          Boolean   @default(false)
+  isFinale         Boolean   @default(false)
+  narrationAudio   String?
+  driveToNextAudio String?
+  audioStatus      String    @default("ready")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  stop             AdminStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
+  tour             AdminTour @relation(fields: [tourId], references: [id], onDelete: Cascade)
 
   @@unique([tourId, stopId])
   @@unique([tourId, position])

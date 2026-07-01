@@ -1,5 +1,7 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { AdminStopStatus, OrderProposalStatus, type Prisma } from "@prisma/client";
-import { fakeRoute } from "@/lib/route-data";
+import { fakeRoute, type RoutePack } from "@/lib/route-data";
 import { prisma } from "@/lib/server/prisma";
 import { buildOrderProposal } from "@/lib/server/admin-ordering";
 
@@ -26,23 +28,41 @@ function parseTags(value: unknown) {
 }
 
 async function ensureCatalogSeed() {
-  const existingTour = await prisma.adminTour.findUnique({ where: { slug: fakeRoute.id } });
-  if (existingTour) {
+  const operatorLoopIds = new Set([
+    "campus-after-dark",
+    "west-side-dead-drive",
+    "edge-of-town",
+    "nutana-broadway"
+  ]);
+  const existingOperatorTours = await prisma.adminTour.count({
+    where: { slug: { in: [...operatorLoopIds] } }
+  });
+  if (existingOperatorTours === operatorLoopIds.size) {
     return;
   }
 
-  await prisma.$transaction(async (tx) => {
-    const tour = await tx.adminTour.create({
-      data: {
-        slug: fakeRoute.id,
-        title: fakeRoute.title,
-        targetDurationMinutes: 70
-      }
-    });
+  const route = await loadSeedRoutePack();
+  const stopMap = new Map(route.stops.map((stop) => [stop.id, stop]));
+  const loops = (route.loops ?? [])
+    .filter((loop) => operatorLoopIds.has(loop.id))
+    .sort((a, b) => [...operatorLoopIds].indexOf(a.id) - [...operatorLoopIds].indexOf(b.id));
 
-    for (const [index, stop] of fakeRoute.stops.entries()) {
-      const adminStop = await tx.adminStop.create({
-        data: {
+  await prisma.$transaction(async (tx) => {
+    await tx.adminTour.deleteMany({ where: { slug: fakeRoute.id } });
+
+    for (const stop of route.stops) {
+      await tx.adminStop.upsert({
+        where: { slug: stop.id },
+        update: {
+          name: stop.title,
+          address: stop.parkPoint?.label,
+          lat: stop.parkPoint?.lat ?? stop.lat,
+          lng: stop.parkPoint?.lng ?? stop.lng,
+          narrationScript: stop.audio.reviewScript ?? stop.story.body,
+          safetyWarning: stop.safetyNote ?? "Review safety guidance before publishing.",
+          status: AdminStopStatus.live
+        },
+        create: {
           slug: stop.id,
           name: stop.title,
           address: stop.parkPoint?.label,
@@ -54,18 +74,70 @@ async function ensureCatalogSeed() {
           status: AdminStopStatus.live
         }
       });
+    }
 
-      await tx.tourStop.create({
-        data: {
-          tourId: tour.id,
-          stopId: adminStop.id,
-          position: index + 1,
-          isStart: index === 0,
-          isFinale: index === fakeRoute.stops.length - 1
+    for (const loop of loops) {
+      const tour = await tx.adminTour.upsert({
+        where: { slug: loop.id },
+        update: {
+          title: loop.title,
+          targetDurationMinutes: parseEstimatedMinutes(loop.estimatedDuration)
+        },
+        create: {
+          slug: loop.id,
+          title: loop.title,
+          targetDurationMinutes: parseEstimatedMinutes(loop.estimatedDuration)
         }
       });
+
+      await tx.tourStop.deleteMany({ where: { tourId: tour.id } });
+
+      for (const [index, stopId] of loop.stopIds.entries()) {
+        const stop = stopMap.get(stopId);
+        const adminStop = await tx.adminStop.findUnique({ where: { slug: stopId } });
+        if (!stop || !adminStop) {
+          continue;
+        }
+
+        const leg = loop.legs?.find((item) => item.fromStopId === stopId);
+        await tx.tourStop.create({
+          data: {
+            tourId: tour.id,
+            stopId: adminStop.id,
+            position: index + 1,
+            isStart: index === 0,
+            isFinale: index === loop.stopIds.length - 1,
+            narrationAudio: stop.audio.narrationFile,
+            driveToNextAudio: leg?.audioFile ?? stop.driveToNextAudio,
+            audioStatus: "ready"
+          }
+        });
+      }
     }
   });
+}
+
+const localRoutePackPath = path.join(process.cwd(), "private", "dark-drives-route-pack.json");
+
+async function loadSeedRoutePack(): Promise<RoutePack> {
+  const rawJson = process.env.DARK_DRIVES_ROUTE_PACK_JSON;
+  const rawBase64 = process.env.DARK_DRIVES_ROUTE_PACK_B64;
+  const payload = rawJson ?? (rawBase64 ? Buffer.from(rawBase64, "base64").toString("utf8") : "");
+
+  if (payload) {
+    return JSON.parse(payload) as RoutePack;
+  }
+
+  try {
+    return JSON.parse(await readFile(localRoutePackPath, "utf8")) as RoutePack;
+  } catch {
+    return fakeRoute;
+  }
+}
+
+function parseEstimatedMinutes(value: string) {
+  const match = value.match(/(\d+)/);
+  return match ? Number(match[1]) : 70;
 }
 
 export async function getAdminDashboardData() {
@@ -138,6 +210,8 @@ export async function createStop(input: {
   tourId?: string;
   isStart?: boolean;
   isFinale?: boolean;
+  narrationAudio?: string;
+  driveToNextAudio?: string;
 }) {
   const geocoded = input.address ? await geocodeAddress(input.address) : null;
   const lat = input.lat ?? geocoded?.lat;
@@ -174,7 +248,10 @@ export async function createStop(input: {
           stopId: stop.id,
           position: (last?.position ?? 0) + 1,
           isStart: Boolean(input.isStart),
-          isFinale: Boolean(input.isFinale)
+          isFinale: Boolean(input.isFinale),
+          narrationAudio: input.narrationAudio?.trim() || null,
+          driveToNextAudio: input.driveToNextAudio?.trim() || null,
+          audioStatus: "needs_generation"
         }
       });
     }
@@ -206,6 +283,92 @@ export async function updateStop(input: {
       themeTags: parseTags(input.themeTags),
       status: input.status
     }
+  });
+}
+
+export async function updateTour(input: {
+  id: string;
+  title: string;
+  targetDurationMinutes: number;
+}) {
+  return prisma.adminTour.update({
+    where: { id: input.id },
+    data: {
+      title: input.title.trim(),
+      targetDurationMinutes: input.targetDurationMinutes
+    }
+  });
+}
+
+export async function createTour(input: {
+  title: string;
+  targetDurationMinutes: number;
+}) {
+  const title = input.title.trim() || "Untitled Tour";
+  return prisma.adminTour.create({
+    data: {
+      slug: `${slugify(title)}-${Date.now().toString(36)}`,
+      title,
+      targetDurationMinutes: input.targetDurationMinutes
+    }
+  });
+}
+
+export async function removeTour(id: string) {
+  await prisma.adminTour.delete({ where: { id } });
+}
+
+export async function updateTourStop(input: {
+  membershipId: string;
+  position: number;
+  isStart: boolean;
+  isFinale: boolean;
+  narrationAudio?: string;
+  driveToNextAudio?: string;
+  audioStatus?: string;
+}) {
+  return prisma.tourStop.update({
+    where: { id: input.membershipId },
+    data: {
+      position: input.position,
+      isStart: input.isStart,
+      isFinale: input.isFinale,
+      narrationAudio: input.narrationAudio?.trim() || null,
+      driveToNextAudio: input.driveToNextAudio?.trim() || null,
+      audioStatus: input.audioStatus || "needs_generation"
+    }
+  });
+}
+
+export async function addStopToTour(input: {
+  tourId: string;
+  stopId: string;
+  narrationAudio?: string;
+}) {
+  const last = await prisma.tourStop.findFirst({
+    where: { tourId: input.tourId },
+    orderBy: { position: "desc" }
+  });
+
+  return prisma.tourStop.create({
+    data: {
+      tourId: input.tourId,
+      stopId: input.stopId,
+      position: (last?.position ?? 0) + 1,
+      narrationAudio: input.narrationAudio?.trim() || null,
+      audioStatus: "needs_generation"
+    }
+  });
+}
+
+export async function removeStopFromTour(membershipId: string) {
+  await prisma.tourStop.delete({ where: { id: membershipId } });
+}
+
+export async function markTourAudioQueued(tourId: string) {
+  await prisma.tourStop.updateMany({
+    where: { tourId },
+    data: { audioStatus: "queued" }
   });
 }
 

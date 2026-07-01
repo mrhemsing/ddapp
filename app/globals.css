@@ -2597,6 +2597,16 @@ button {
   gap: 7px;
 }
 
+.admin-form .admin-check-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.admin-form .admin-check-row input {
+  width: auto;
+}
+
 .admin-two,
 .admin-split,
 .admin-metrics {

@@ -25,6 +25,9 @@ type TourStop = {
   position: number;
   isStart: boolean;
   isFinale: boolean;
+  narrationAudio: string | null;
+  driveToNextAudio: string | null;
+  audioStatus: string;
   stop: AdminStop;
 };
 
@@ -40,7 +43,6 @@ type Proposal = {
   id: string;
   tourId: string;
   status: string;
-  trigger: string;
   currentOrder: string[];
   proposedOrder: string[];
   placementReasons: Array<{ stopId: string; reason: string }>;
@@ -50,7 +52,6 @@ type Proposal = {
   durationMinutes: number;
   targetDurationMinutes: number;
   durationDeltaMinutes: number;
-  createdAt: string;
   tour: { title: string };
 };
 
@@ -60,7 +61,7 @@ type Dashboard = {
   proposals: Proposal[];
 };
 
-type FormState = {
+type StopForm = {
   id?: string;
   name: string;
   address: string;
@@ -70,10 +71,20 @@ type FormState = {
   safetyWarning: string;
   themeTags: string;
   status: StopStatus;
-  tourId: string;
 };
 
-const emptyForm: FormState = {
+type MembershipForm = {
+  id?: string;
+  stopId: string;
+  position: string;
+  isStart: boolean;
+  isFinale: boolean;
+  narrationAudio: string;
+  driveToNextAudio: string;
+  audioStatus: string;
+};
+
+const emptyStopForm: StopForm = {
   name: "",
   address: "",
   lat: "",
@@ -81,8 +92,17 @@ const emptyForm: FormState = {
   narrationScript: "",
   safetyWarning: "",
   themeTags: "",
-  status: "held",
-  tourId: ""
+  status: "held"
+};
+
+const emptyMembershipForm: MembershipForm = {
+  stopId: "",
+  position: "",
+  isStart: false,
+  isFinale: false,
+  narrationAudio: "",
+  driveToNextAudio: "",
+  audioStatus: "needs_generation"
 };
 
 function stopLabel(stopsById: Map<string, AdminStop>, id: string) {
@@ -102,10 +122,10 @@ function buildMapPoints(stops: AdminStop[]) {
   const lngSpan = Math.max(0.01, maxLng - minLng);
 
   return stops.map((stop) => {
-      const x = 18 + ((stop.lng - minLng) / lngSpan) * 264;
-      const y = 142 - ((stop.lat - minLat) / latSpan) * 112;
-      return { id: stop.id, x, y };
-    });
+    const x = 18 + ((stop.lng - minLng) / lngSpan) * 264;
+    const y = 142 - ((stop.lat - minLat) / latSpan) * 112;
+    return { id: stop.id, x, y };
+  });
 }
 
 export function AdminStopsClient({
@@ -116,16 +136,16 @@ export function AdminStopsClient({
   adminEmail: string;
 }) {
   const [dashboard, setDashboard] = useState(initialDashboard);
-  const [form, setForm] = useState<FormState>(() => ({
-    ...emptyForm,
-    tourId: initialDashboard.tours[0]?.id ?? ""
-  }));
+  const [selectedTourId, setSelectedTourId] = useState(initialDashboard.tours[0]?.id ?? "");
+  const selectedTour = dashboard.tours.find((tour) => tour.id === selectedTourId) ?? dashboard.tours[0];
+  const [tourTitle, setTourTitle] = useState(selectedTour?.title ?? "");
+  const [tourTarget, setTourTarget] = useState(String(selectedTour?.targetDurationMinutes ?? 70));
+  const [stopForm, setStopForm] = useState<StopForm>(emptyStopForm);
+  const [membershipForm, setMembershipForm] = useState<MembershipForm>(emptyMembershipForm);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
 
-  const selectedTour = dashboard.tours.find((tour) => tour.id === form.tourId) ?? dashboard.tours[0];
-  const latestProposal = dashboard.proposals[0];
   const stopsById = useMemo(() => {
     const map = new Map<string, AdminStop>();
     for (const stop of dashboard.stops) {
@@ -133,28 +153,17 @@ export function AdminStopsClient({
     }
     return map;
   }, [dashboard.stops]);
+  const latestProposal = dashboard.proposals.find((proposal) => proposal.tourId === selectedTour?.id) ?? dashboard.proposals[0];
   const proposedStops = latestProposal?.proposedOrder.map((id) => stopsById.get(id)).filter((stop): stop is AdminStop => Boolean(stop));
   const proposedPoints = buildMapPoints(proposedStops ?? []);
+  const availableStops = dashboard.stops.filter((stop) => !selectedTour?.stops.some((item) => item.stopId === stop.id));
 
-  function setField(name: keyof FormState, value: string) {
-    setForm((current) => ({ ...current, [name]: value }));
-  }
-
-  function editStop(stop: AdminStop) {
-    setForm({
-      id: stop.id,
-      name: stop.name,
-      address: stop.address ?? "",
-      lat: String(stop.lat),
-      lng: String(stop.lng),
-      narrationScript: stop.narrationScript,
-      safetyWarning: stop.safetyWarning,
-      themeTags: stop.themeTags.join(", "),
-      status: stop.status,
-      tourId: selectedTour?.id ?? ""
-    });
-    setMessage(`Editing ${stop.name}`);
-    setError("");
+  function chooseTour(tourId: string) {
+    const tour = dashboard.tours.find((item) => item.id === tourId);
+    setSelectedTourId(tourId);
+    setTourTitle(tour?.title ?? "");
+    setTourTarget(String(tour?.targetDurationMinutes ?? 70));
+    setMembershipForm(emptyMembershipForm);
   }
 
   function requestAdmin(endpoint: string, body: Record<string, unknown>, success: string) {
@@ -173,30 +182,79 @@ export function AdminStopsClient({
       }
 
       setDashboard(payload.dashboard);
-      setMessage(success);
-      if (body.action === "create" || body.action === "update") {
-        setForm({ ...emptyForm, tourId: form.tourId });
+      setMessage(payload.message ?? success);
+      if (body.action === "create") {
+        setStopForm(emptyStopForm);
+      }
+      if (body.action === "addStop" || body.action === "updateStop" || body.action === "removeStop") {
+        setMembershipForm(emptyMembershipForm);
       }
     });
+  }
+
+  function editStop(stop: AdminStop) {
+    setStopForm({
+      id: stop.id,
+      name: stop.name,
+      address: stop.address ?? "",
+      lat: String(stop.lat),
+      lng: String(stop.lng),
+      narrationScript: stop.narrationScript,
+      safetyWarning: stop.safetyWarning,
+      themeTags: stop.themeTags.join(", "),
+      status: stop.status
+    });
+    setMessage(`Editing stop metadata: ${stop.name}`);
+    setError("");
+  }
+
+  function editMembership(membership: TourStop) {
+    editStop(membership.stop);
+    setMembershipForm({
+      id: membership.id,
+      stopId: membership.stopId,
+      position: String(membership.position),
+      isStart: membership.isStart,
+      isFinale: membership.isFinale,
+      narrationAudio: membership.narrationAudio ?? "",
+      driveToNextAudio: membership.driveToNextAudio ?? "",
+      audioStatus: membership.audioStatus
+    });
+    setMessage(`Editing tour placement: ${membership.stop.name}`);
   }
 
   function saveStop() {
     requestAdmin(
       "/api/admin/stops",
       {
-        action: form.id ? "update" : "create",
-        id: form.id,
-        name: form.name,
-        address: form.address,
-        lat: form.lat,
-        lng: form.lng,
-        narrationScript: form.narrationScript,
-        safetyWarning: form.safetyWarning,
-        themeTags: form.themeTags,
-        status: form.status,
-        tourId: form.id ? undefined : form.tourId
+        action: stopForm.id ? "update" : "create",
+        id: stopForm.id,
+        name: stopForm.name,
+        address: stopForm.address,
+        lat: stopForm.lat,
+        lng: stopForm.lng,
+        narrationScript: stopForm.narrationScript,
+        safetyWarning: stopForm.safetyWarning,
+        themeTags: stopForm.themeTags,
+        status: stopForm.status,
+        tourId: stopForm.id ? undefined : selectedTour?.id,
+        narrationAudio: membershipForm.narrationAudio,
+        driveToNextAudio: membershipForm.driveToNextAudio
       },
-      form.id ? "Stop updated." : "Stop added. Review the tour proposal before publishing."
+      stopForm.id ? "Stop saved. Generate audio if the script changed." : "Stop added to this tour."
+    );
+  }
+
+  function saveTour() {
+    requestAdmin(
+      "/api/admin/tours",
+      {
+        action: "update",
+        id: selectedTour?.id,
+        title: tourTitle,
+        targetDurationMinutes: tourTarget
+      },
+      "Tour saved."
     );
   }
 
@@ -205,14 +263,17 @@ export function AdminStopsClient({
       <header className="admin-header">
         <div>
           <p className="admin-kicker">Dark Drives internal</p>
-          <h1>Stop management</h1>
+          <h1>Tour management</h1>
           <p>Signed in as {adminEmail}</p>
         </div>
         <button
           className="admin-icon-button"
           type="button"
           title="New stop"
-          onClick={() => setForm({ ...emptyForm, tourId: selectedTour?.id ?? "" })}
+          onClick={() => {
+            setStopForm(emptyStopForm);
+            setMembershipForm(emptyMembershipForm);
+          }}
         >
           <Plus aria-hidden="true" />
         </button>
@@ -221,101 +282,170 @@ export function AdminStopsClient({
       {message ? <p className="admin-notice">{message}</p> : null}
       {error ? <p className="admin-error">{error}</p> : null}
 
-      <section className="admin-grid">
-        <div className="admin-panel admin-panel-wide">
-          <div className="admin-panel-head">
-            <div>
-              <p className="admin-kicker">Tour order</p>
-              <h2>{selectedTour?.title ?? "No tour"}</h2>
-            </div>
-            <select value={form.tourId} onChange={(event) => setField("tourId", event.target.value)}>
-              {dashboard.tours.map((tour) => (
-                <option key={tour.id} value={tour.id}>
-                  {tour.title}
-                </option>
-              ))}
-            </select>
+      <section className="admin-panel admin-form">
+        <div className="admin-panel-head">
+          <div>
+            <p className="admin-kicker">Tour</p>
+            <h2>{selectedTour?.title ?? "No tour"}</h2>
           </div>
-
-          <div className="admin-stop-list">
-            {selectedTour?.stops.map((membership) => (
-              <button key={membership.id} className="admin-stop-row" type="button" onClick={() => editStop(membership.stop)}>
-                <span>{String(membership.position).padStart(2, "0")}</span>
-                <strong>{membership.stop.name}</strong>
-                <em>{membership.isStart ? "Start" : membership.isFinale ? "Finale" : membership.stop.status}</em>
-              </button>
+          <select value={selectedTour?.id ?? ""} onChange={(event) => chooseTour(event.target.value)}>
+            {dashboard.tours.map((tour) => (
+              <option key={tour.id} value={tour.id}>
+                {tour.title}
+              </option>
             ))}
-          </div>
-
+          </select>
+        </div>
+        <div className="admin-two">
+          <label>
+            Tour name
+            <input value={tourTitle} onChange={(event) => setTourTitle(event.target.value)} />
+          </label>
+          <label>
+            Target minutes
+            <input value={tourTarget} onChange={(event) => setTourTarget(event.target.value)} />
+          </label>
+        </div>
+        <div className="admin-toolbar">
+          <button className="admin-action" type="button" disabled={!selectedTour || isPending} onClick={saveTour}>
+            <Save aria-hidden="true" />
+            Save tour
+          </button>
+          <button
+            className="admin-action"
+            type="button"
+            disabled={isPending}
+            onClick={() =>
+              requestAdmin(
+                "/api/admin/tours",
+                { action: "create", title: "New Tour", targetDurationMinutes: 70 },
+                "Tour added."
+              )
+            }
+          >
+            <Plus aria-hidden="true" />
+            Add tour
+          </button>
           <button
             className="admin-action"
             type="button"
             disabled={!selectedTour || isPending}
             onClick={() =>
               requestAdmin(
-                "/api/admin/proposals",
-                {
-                  action: "create",
-                  tourId: selectedTour?.id,
-                  trigger: "Operator requested ordering review"
-                },
-                "Ordering proposal created."
+                "/api/admin/tours",
+                { action: "generateAudio", tourId: selectedTour?.id },
+                "Audio generation queued for this tour."
               )
             }
           >
-            <RefreshCw aria-hidden="true" />
-            Suggest order
+            <FileAudio aria-hidden="true" />
+            Generate audio
           </button>
+          <button
+            className="admin-danger"
+            type="button"
+            disabled={!selectedTour || isPending}
+            onClick={() =>
+              requestAdmin(
+                "/api/admin/tours",
+                { action: "delete", id: selectedTour?.id },
+                "Tour removed."
+              )
+            }
+          >
+            <Trash2 aria-hidden="true" />
+            Remove tour
+          </button>
+        </div>
+      </section>
+
+      <section className="admin-grid">
+        <div className="admin-panel admin-panel-wide">
+          <div className="admin-panel-head">
+            <div>
+              <p className="admin-kicker">Tour stops</p>
+              <h2>{selectedTour?.stops.length ?? 0} stops</h2>
+            </div>
+            <button
+              className="admin-action"
+              type="button"
+              disabled={!selectedTour || isPending}
+              onClick={() =>
+                requestAdmin(
+                  "/api/admin/proposals",
+                  {
+                    action: "create",
+                    tourId: selectedTour?.id,
+                    trigger: "Operator requested ordering review"
+                  },
+                  "Ordering proposal created."
+                )
+              }
+            >
+              <RefreshCw aria-hidden="true" />
+              Suggest order
+            </button>
+          </div>
+
+          <div className="admin-stop-list">
+            {selectedTour?.stops.map((membership) => (
+              <button key={membership.id} className="admin-stop-row" type="button" onClick={() => editMembership(membership)}>
+                <span>{String(membership.position).padStart(2, "0")}</span>
+                <strong>{membership.stop.name}</strong>
+                <em>{membership.isStart ? "Start" : membership.isFinale ? "Finale" : membership.audioStatus}</em>
+              </button>
+            ))}
+          </div>
         </div>
 
         <form className="admin-panel admin-form" onSubmit={(event) => event.preventDefault()}>
           <div className="admin-panel-head">
             <div>
-              <p className="admin-kicker">{form.id ? "Edit stop" : "Add stop"}</p>
-              <h2>Metadata</h2>
+              <p className="admin-kicker">{stopForm.id ? "Edit stop" : "Add stop"}</p>
+              <h2>Stop metadata</h2>
             </div>
-            <select value={form.status} onChange={(event) => setField("status", event.target.value as StopStatus)}>
-              <option value="held">Held</option>
+            <select value={stopForm.status} onChange={(event) => setStopForm((current) => ({ ...current, status: event.target.value as StopStatus }))}>
               <option value="live">Live</option>
+              <option value="held">Held</option>
             </select>
           </div>
 
           <label>
             Name
-            <input value={form.name} onChange={(event) => setField("name", event.target.value)} />
+            <input value={stopForm.name} onChange={(event) => setStopForm((current) => ({ ...current, name: event.target.value }))} />
           </label>
           <label>
             Address or vantage point
-            <input value={form.address} onChange={(event) => setField("address", event.target.value)} />
+            <input value={stopForm.address} onChange={(event) => setStopForm((current) => ({ ...current, address: event.target.value }))} />
           </label>
           <div className="admin-two">
             <label>
               Latitude
-              <input value={form.lat} onChange={(event) => setField("lat", event.target.value)} />
+              <input value={stopForm.lat} onChange={(event) => setStopForm((current) => ({ ...current, lat: event.target.value }))} />
             </label>
             <label>
               Longitude
-              <input value={form.lng} onChange={(event) => setField("lng", event.target.value)} />
+              <input value={stopForm.lng} onChange={(event) => setStopForm((current) => ({ ...current, lng: event.target.value }))} />
             </label>
           </div>
           <label>
             Theme tags
-            <input value={form.themeTags} onChange={(event) => setField("themeTags", event.target.value)} />
+            <input value={stopForm.themeTags} onChange={(event) => setStopForm((current) => ({ ...current, themeTags: event.target.value }))} />
           </label>
           <label>
             Safety and warning copy
-            <textarea value={form.safetyWarning} onChange={(event) => setField("safetyWarning", event.target.value)} />
+            <textarea value={stopForm.safetyWarning} onChange={(event) => setStopForm((current) => ({ ...current, safetyWarning: event.target.value }))} />
           </label>
           <label>
             Narration script
-            <textarea value={form.narrationScript} onChange={(event) => setField("narrationScript", event.target.value)} />
+            <textarea value={stopForm.narrationScript} onChange={(event) => setStopForm((current) => ({ ...current, narrationScript: event.target.value }))} />
           </label>
           <div className="admin-toolbar">
             <button className="admin-action" type="button" disabled={isPending} onClick={saveStop}>
               <Save aria-hidden="true" />
               Save stop
             </button>
-            {form.id ? (
+            {stopForm.id ? (
               <button
                 className="admin-danger"
                 type="button"
@@ -323,13 +453,117 @@ export function AdminStopsClient({
                 onClick={() =>
                   requestAdmin(
                     "/api/admin/stops",
-                    { action: "delete", id: form.id },
-                    "Stop removed. Review the affected tour before publishing."
+                    { action: "delete", id: stopForm.id },
+                    "Stop removed from the catalog."
                   )
                 }
               >
                 <Trash2 aria-hidden="true" />
-                Remove
+                Remove stop
+              </button>
+            ) : null}
+          </div>
+        </form>
+
+        <form className="admin-panel admin-form" onSubmit={(event) => event.preventDefault()}>
+          <div className="admin-panel-head">
+            <div>
+              <p className="admin-kicker">Tour placement</p>
+              <h2>{membershipForm.id ? "Edit audio and order" : "Add existing stop"}</h2>
+            </div>
+          </div>
+
+          {!membershipForm.id ? (
+            <label>
+              Stop
+              <select value={membershipForm.stopId} onChange={(event) => setMembershipForm((current) => ({ ...current, stopId: event.target.value }))}>
+                <option value="">Choose stop</option>
+                {availableStops.map((stop) => (
+                  <option key={stop.id} value={stop.id}>
+                    {stop.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          <div className="admin-two">
+            <label>
+              Position
+              <input value={membershipForm.position} onChange={(event) => setMembershipForm((current) => ({ ...current, position: event.target.value }))} />
+            </label>
+            <label>
+              Audio status
+              <select value={membershipForm.audioStatus} onChange={(event) => setMembershipForm((current) => ({ ...current, audioStatus: event.target.value }))}>
+                <option value="ready">Ready</option>
+                <option value="needs_generation">Needs generation</option>
+                <option value="queued">Queued</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            Stop narration audio file
+            <input value={membershipForm.narrationAudio} onChange={(event) => setMembershipForm((current) => ({ ...current, narrationAudio: event.target.value }))} />
+          </label>
+          <label>
+            Drive-leg audio to next stop
+            <input value={membershipForm.driveToNextAudio} onChange={(event) => setMembershipForm((current) => ({ ...current, driveToNextAudio: event.target.value }))} />
+          </label>
+          <label className="admin-check-row">
+            <input type="checkbox" checked={membershipForm.isStart} onChange={(event) => setMembershipForm((current) => ({ ...current, isStart: event.target.checked }))} />
+            Start stop
+          </label>
+          <label className="admin-check-row">
+            <input type="checkbox" checked={membershipForm.isFinale} onChange={(event) => setMembershipForm((current) => ({ ...current, isFinale: event.target.checked }))} />
+            Finale stop
+          </label>
+          <div className="admin-toolbar">
+            <button
+              className="admin-action"
+              type="button"
+              disabled={!selectedTour || isPending}
+              onClick={() =>
+                requestAdmin(
+                  "/api/admin/tours",
+                  membershipForm.id
+                    ? {
+                        action: "updateStop",
+                        membershipId: membershipForm.id,
+                        position: membershipForm.position,
+                        isStart: membershipForm.isStart,
+                        isFinale: membershipForm.isFinale,
+                        narrationAudio: membershipForm.narrationAudio,
+                        driveToNextAudio: membershipForm.driveToNextAudio,
+                        audioStatus: membershipForm.audioStatus
+                      }
+                    : {
+                        action: "addStop",
+                        tourId: selectedTour?.id,
+                        stopId: membershipForm.stopId,
+                        narrationAudio: membershipForm.narrationAudio
+                      },
+                  membershipForm.id ? "Tour stop saved." : "Stop added to tour."
+                )
+              }
+            >
+              <Save aria-hidden="true" />
+              Save placement
+            </button>
+            {membershipForm.id ? (
+              <button
+                className="admin-danger"
+                type="button"
+                disabled={isPending}
+                onClick={() =>
+                  requestAdmin(
+                    "/api/admin/tours",
+                    { action: "removeStop", membershipId: membershipForm.id },
+                    "Stop removed from this tour."
+                  )
+                }
+              >
+                <Trash2 aria-hidden="true" />
+                Remove from tour
               </button>
             ) : null}
           </div>
@@ -422,15 +656,6 @@ export function AdminStopsClient({
                 </div>
               </div>
 
-              <div className="admin-reasons">
-                {latestProposal.placementReasons.map((item) => (
-                  <p key={item.stopId}>
-                    <strong>{stopLabel(stopsById, item.stopId)}</strong>
-                    {item.reason}
-                  </p>
-                ))}
-              </div>
-
               <p className="admin-muted">{latestProposal.engineSummary}</p>
 
               <button
@@ -450,7 +675,7 @@ export function AdminStopsClient({
               </button>
             </>
           ) : (
-            <p className="admin-muted">Create a suggestion to review route order, narrative reasoning, duration, and stale drive-leg audio.</p>
+            <p className="admin-muted">Create a suggestion to review order, duration, and drive-leg audio that needs regeneration.</p>
           )}
         </section>
       </section>
