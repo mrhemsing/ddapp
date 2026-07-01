@@ -77,7 +77,7 @@ export class DarkDrivesAudioEngine {
     this.ambientGain.gain.setTargetAtTime(volume, this.context.currentTime, rampSeconds / 4);
   }
 
-  async playNarration(url: string, volume = DEFAULT_NARRATION_VOLUME) {
+  async playNarration(url: string, volume = DEFAULT_NARRATION_VOLUME, onStarted?: () => void) {
     const context = this.getContext();
     const narrationGain = this.getNarrationGain();
     const ambientGain = this.getAmbientGain();
@@ -94,6 +94,7 @@ export class DarkDrivesAudioEngine {
 
     return new Promise<void>((resolve) => {
       this.startNarrationSource({ buffer, offset: 0, volume: targetVolume, resolve });
+      onStarted?.();
     });
   }
 

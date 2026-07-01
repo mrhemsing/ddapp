@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowRight, LocateFixed, Navigation, Play } from "lucide-react";
-import { cacheRouteAudio, isRouteCached, type CacheProgress } from "@/lib/audio-cache";
+import { cacheAudioUrls, isAudioUrlCached, prefetchRouteAudio, type CacheProgress } from "@/lib/audio-cache";
 import { DarkDrivesAudioEngine } from "@/lib/audio-engine";
 import type { PlaybackProgress } from "@/lib/audio-engine";
 import { LEGAL_VERSION, legalAcceptanceStorageKey, legalAcknowledgmentPoints, legalDocuments } from "@/lib/legal";
@@ -175,6 +175,59 @@ function cacheFilename(url?: string) {
 
   const path = url.split(/[?#]/, 1)[0];
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+}
+
+function stopAssetUrls(stop: Stop) {
+  const urls = new Set<string>([stop.audio.narrationFile]);
+  if (stop.audio.ambientFile) {
+    urls.add(stop.audio.ambientFile);
+  }
+  if (stop.driveToNextAudio) {
+    urls.add(stop.driveToNextAudio);
+  }
+  for (const ritual of stop.rituals ?? []) {
+    if (ritual.cueAudio) {
+      urls.add(ritual.cueAudio);
+    }
+    if (ritual.payoff?.audioFile) {
+      urls.add(ritual.payoff.audioFile);
+    }
+  }
+  return [...urls];
+}
+
+function tourAssetUrls(route: RoutePack, stops: Stop[], selectedLoop: NonNullable<RoutePack["loops"]>[number] | null) {
+  const urls = new Set<string>([route.introAudio, route.outroAudio]);
+  for (const stop of stops) {
+    stopAssetUrls(stop).forEach((url) => urls.add(url));
+  }
+  for (const leg of selectedLoop?.legs ?? []) {
+    urls.add(leg.audioFile);
+  }
+  return [...urls];
+}
+
+function lookaheadAssetUrls(route: RoutePack, stops: Stop[], activeStopIndex: number, selectedLoop: NonNullable<RoutePack["loops"]>[number] | null) {
+  const urls = new Set<string>([route.introAudio]);
+  const maxIndex = Math.min(activeStopIndex + 2, stops.length - 1);
+  for (let index = Math.max(activeStopIndex, 0); index <= maxIndex; index += 1) {
+    const stop = stops[index];
+    if (stop) {
+      stopAssetUrls(stop).forEach((url) => urls.add(url));
+    }
+  }
+  const lookaheadStopIds = new Set(stops.slice(activeStopIndex, maxIndex + 1).map((stop) => stop.id));
+  for (const leg of selectedLoop?.legs ?? []) {
+    if (lookaheadStopIds.has(leg.fromStopId) || lookaheadStopIds.has(leg.toStopId)) {
+      urls.add(leg.audioFile);
+    }
+  }
+  return [...urls];
+}
+
+function prefersReducedPrefetch() {
+  const navigatorWithConnection = navigator as Navigator & { connection?: { saveData?: boolean } };
+  return Boolean(navigatorWithConnection.connection?.saveData);
 }
 
 function isCurrentLegalAcceptance(value: string | null) {
@@ -494,7 +547,8 @@ export function RoutePlayer() {
   const [playerState, setPlayerState] = useState<PlayerState>("preflight");
   const [cacheProgress, setCacheProgress] = useState<CacheProgress>({ complete: 0, total: 0, percent: 0 });
   const [cacheError, setCacheError] = useState("");
-  const [isPreparingRoute, setIsPreparingRoute] = useState(false);
+  const [isSavingOffline, setIsSavingOffline] = useState(false);
+  const [isBufferingAudio, setIsBufferingAudio] = useState(false);
   const [activeStopIndex, setActiveStopIndex] = useState(0);
   const [distanceMeters, setDistanceMeters] = useState<number | null>(null);
   const [effectiveArriveRadius, setEffectiveArriveRadius] = useState<number | null>(null);
@@ -646,9 +700,9 @@ export function RoutePlayer() {
   const completedLoopIdSet = useMemo(() => new Set(completedLoopIds), [completedLoopIds]);
   const nextUnfinishedLoop = authoredLoops.find((loop) => !completedLoopIdSet.has(loop.id));
   const loopsLeftTonight = authoredLoops.filter((loop) => !completedLoopIdSet.has(loop.id)).length;
-  const isPrepared = cacheProgress.percent === 100;
-  const hasStartedRoutePrep = isPreparingRoute || cacheProgress.complete > 0 || cacheProgress.percent > 0 || Boolean(cacheProgress.currentUrl) || Boolean(cacheError);
-  const cacheStatusText = isPrepared ? "Ready offline" : hasStartedRoutePrep ? `${cacheProgress.percent}%` : "Not started";
+  const isSavedOffline = cacheProgress.percent === 100;
+  const hasStartedOfflineSave = isSavingOffline || cacheProgress.complete > 0 || cacheProgress.percent > 0 || Boolean(cacheProgress.currentUrl) || Boolean(cacheError);
+  const cacheStatusText = isSavedOffline ? "Saved offline" : hasStartedOfflineSave ? `${cacheProgress.percent}%` : "Streaming";
   const statusLabel = !route
     ? routeError ? "Locked" : "Loading"
     : resumeState && isPreDrive ? "Resume"
@@ -728,12 +782,7 @@ export function RoutePlayer() {
         }
 
         const data = (await response.json()) as RoutePack;
-        const cached = await isRouteCached(data);
         if (active) {
-          if (cached) {
-            setCacheProgress({ complete: 1, total: 1, percent: 100 });
-            setPlayerState("ready");
-          }
           setRoute(data);
         }
       } catch (error) {
@@ -752,10 +801,7 @@ export function RoutePlayer() {
 
   const primary = useMemo(() => {
     if (!route) return { label: "Loading Route", disabled: true, className: "" };
-    if (playerState === "preflight" && isPreparingRoute) return { label: `Preparing ${cacheProgress.percent}%`, disabled: true, className: "preparing" };
-    if (playerState === "preflight" && cacheError) return { label: "Retry", disabled: false, className: "" };
-    if (playerState === "preflight") return { label: "Prepare Route", disabled: false, className: "" };
-    if (playerState === "ready") return { label: "Play Introduction", disabled: false, className: "ready" };
+    if (playerState === "preflight" || playerState === "ready") return { label: "Play Introduction", disabled: false, className: "ready" };
     if (playerState === "intro" || playerState === "outro") {
       return {
         label: narrationPlayback === "paused" ? "Resume" : "Pause",
@@ -777,7 +823,7 @@ export function RoutePlayer() {
     }
     if (playerState === "played") return { label: "Replay", disabled: false, className: "replay" };
     return { label: "Tour Complete", disabled: true, className: "" };
-  }, [cacheError, cacheProgress.percent, isPreparingRoute, narrationPlayback, playerState, route]);
+  }, [narrationPlayback, playerState, route]);
 
   useEffect(() => {
     if (!route) {
@@ -812,12 +858,7 @@ export function RoutePlayer() {
 
     audioEngine.current = new DarkDrivesAudioEngine();
 
-    void isRouteCached(route).then((cached) => {
-      if (cached) {
-        setCacheProgress({ complete: 1, total: 1, percent: 100 });
-        setPlayerState("ready");
-      }
-    });
+    setCacheProgress({ complete: 0, total: 0, percent: 0 });
   }, [route]);
 
   useEffect(() => {
@@ -975,6 +1016,18 @@ export function RoutePlayer() {
   }, [ambientUrl, currentStop, isForeground, playerState]);
 
   useEffect(() => {
+    if (!route || !selectedLoop || activeStops.length === 0) {
+      return;
+    }
+    if (prefersReducedPrefetch()) {
+      return;
+    }
+
+    const urls = lookaheadAssetUrls(route, activeStops, activeStopIndex, selectedLoop);
+    void prefetchRouteAudio(route, urls);
+  }, [activeStopIndex, activeStops, route, selectedLoop]);
+
+  useEffect(() => {
     if (
       playerState !== "intro" &&
       playerState !== "introPlayed" &&
@@ -1011,25 +1064,7 @@ export function RoutePlayer() {
       return;
     }
 
-    if (playerState === "preflight") {
-      if (isPreparingRoute) {
-        return;
-      }
-
-      setCacheError("");
-      setIsPreparingRoute(true);
-      try {
-        await cacheRouteAudio(route, setCacheProgress);
-        setIsPreparingRoute(false);
-        setPlayerState("ready");
-      } catch (error) {
-        setIsPreparingRoute(false);
-        setCacheError(error instanceof Error ? error.message : "Download failed.");
-      }
-      return;
-    }
-
-    if (playerState === "ready") {
+    if (playerState === "preflight" || playerState === "ready") {
       await audioEngine.current?.unlock();
       setAudioStatus("Unlocked");
       await playRouteIntro();
@@ -1063,6 +1098,22 @@ export function RoutePlayer() {
 
     if (playerState === "outroPlayed") {
       await playRouteOutro();
+    }
+  }
+
+  async function saveTourOffline() {
+    if (!route || !selectedLoop || activeStops.length === 0 || isSavingOffline) {
+      return;
+    }
+
+    setCacheError("");
+    setIsSavingOffline(true);
+    try {
+      await cacheAudioUrls(route, tourAssetUrls(route, activeStops, selectedLoop), setCacheProgress);
+    } catch (error) {
+      setCacheError(error instanceof Error ? error.message : "Offline save failed.");
+    } finally {
+      setIsSavingOffline(false);
     }
   }
 
@@ -1112,6 +1163,7 @@ export function RoutePlayer() {
     playbackToken.current += 1;
     audioEngine.current?.stopNarration();
     resetRitualCue();
+    setIsBufferingAudio(false);
     setNarrationPlayback("idle");
     setNarrationProgress(null);
 
@@ -1154,8 +1206,9 @@ export function RoutePlayer() {
     await audioEngine.current?.startAmbient(ambientUrl);
     audioEngine.current?.setAmbientVolume(0.2);
     setPlayerState("intro");
+    setIsBufferingAudio(!(await isAudioUrlCached(route, route.introAudio)));
     setNarrationPlayback("playing");
-    await audioEngine.current?.playNarration(route.introAudio, ROUTE_NARRATION_VOLUME);
+    await audioEngine.current?.playNarration(route.introAudio, ROUTE_NARRATION_VOLUME, () => setIsBufferingAudio(false));
     if (token !== playbackToken.current) {
       return;
     }
@@ -1169,6 +1222,7 @@ export function RoutePlayer() {
     playbackToken.current += 1;
     audioEngine.current?.stopAll();
     resetRitualCue();
+    setIsBufferingAudio(false);
     setNarrationPlayback("idle");
     setNarrationProgress(null);
     setPlayerState("introPlayed");
@@ -1187,8 +1241,9 @@ export function RoutePlayer() {
     setPlayerState("outro");
     await audioEngine.current?.startAmbient(ambientUrl);
     audioEngine.current?.setAmbientVolume(0.2);
+    setIsBufferingAudio(!(await isAudioUrlCached(route, route.outroAudio)));
     setNarrationPlayback("playing");
-    await audioEngine.current?.playNarration(route.outroAudio, ROUTE_NARRATION_VOLUME);
+    await audioEngine.current?.playNarration(route.outroAudio, ROUTE_NARRATION_VOLUME, () => setIsBufferingAudio(false));
     if (token !== playbackToken.current) {
       return;
     }
@@ -1204,6 +1259,7 @@ export function RoutePlayer() {
     playbackToken.current += 1;
     audioEngine.current?.stopAll();
     resetRitualCue();
+    setIsBufferingAudio(false);
     await wakeLock.current.release();
     setWakeStatus("Released");
     setNarrationPlayback("idle");
@@ -1231,15 +1287,16 @@ export function RoutePlayer() {
     hasAutoArmedStop.current = false;
     setPlayerState("traveling");
     if (legAudio) {
+      setIsBufferingAudio(!(await isAudioUrlCached(route, legAudio)));
       setNarrationPlayback("playing");
-      await audioEngine.current?.playNarration(legAudio, ROUTE_NARRATION_VOLUME);
+      await audioEngine.current?.playNarration(legAudio, ROUTE_NARRATION_VOLUME, () => setIsBufferingAudio(false));
       setNarrationPlayback("idle");
       setNarrationProgress(null);
     }
   }
 
   async function playCurrentStopNarration() {
-    if (!currentStop) {
+    if (!route || !currentStop) {
       return;
     }
 
@@ -1247,8 +1304,9 @@ export function RoutePlayer() {
     setPlayerState("playing");
     await audioEngine.current?.startAmbient(ambientUrl);
     audioEngine.current?.setAmbientVolume(0.44);
+    setIsBufferingAudio(!(await isAudioUrlCached(route, currentStop.audio.narrationFile)));
     setNarrationPlayback("playing");
-    await audioEngine.current?.playNarration(currentStop.audio.narrationFile);
+    await audioEngine.current?.playNarration(currentStop.audio.narrationFile, undefined, () => setIsBufferingAudio(false));
     if (token !== playbackToken.current) {
       return;
     }
@@ -1294,6 +1352,7 @@ export function RoutePlayer() {
     playbackToken.current += 1;
     audioEngine.current?.stopOneShots();
     resetRitualCue();
+    setIsBufferingAudio(false);
     setNarrationPlayback("idle");
     setNarrationProgress(null);
     setActiveStopIndex(nextIndex);
@@ -1384,10 +1443,14 @@ export function RoutePlayer() {
     playbackToken.current += 1;
     audioEngine.current?.stopOneShots();
     resetRitualCue();
+    setIsBufferingAudio(false);
     window.localStorage.setItem(welcomeSeenStorageKey, "true");
     setHasSeenWelcome(true);
     setSelectedLoopId(loopId);
     setIsLoopPickerOpen(false);
+    setCacheProgress({ complete: 0, total: 0, percent: 0 });
+    setCacheError("");
+    setIsSavingOffline(false);
     setActiveStopIndex(0);
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
@@ -1497,7 +1560,11 @@ export function RoutePlayer() {
     playbackToken.current += 1;
     audioEngine.current?.stopOneShots();
     resetRitualCue();
+    setIsBufferingAudio(false);
     setSelectedLoopId(loopId);
+    setCacheProgress({ complete: 0, total: 0, percent: 0 });
+    setCacheError("");
+    setIsSavingOffline(false);
     setActiveStopIndex(0);
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
@@ -1525,9 +1592,13 @@ export function RoutePlayer() {
     playbackToken.current += 1;
     audioEngine.current?.stopOneShots();
     resetRitualCue();
+    setIsBufferingAudio(false);
     updateLoopUrl(nextUnfinishedLoop.id);
     setSelectedLoopId(nextUnfinishedLoop.id);
     setIsLoopPickerOpen(false);
+    setCacheProgress({ complete: 0, total: 0, percent: 0 });
+    setCacheError("");
+    setIsSavingOffline(false);
     setActiveStopIndex(0);
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
@@ -1552,12 +1623,16 @@ export function RoutePlayer() {
     playbackToken.current += 1;
     audioEngine.current?.stopAll();
     resetRitualCue();
+    setIsBufferingAudio(false);
     await wakeLock.current.release();
     setWakeStatus("Released");
     setNarrationPlayback("idle");
     setNarrationProgress(null);
     setSelectedLoopId(null);
     setIsLoopPickerOpen(false);
+    setCacheProgress({ complete: 0, total: 0, percent: 0 });
+    setCacheError("");
+    setIsSavingOffline(false);
     setActiveStopIndex(0);
     setDistanceMeters(null);
     setEffectiveArriveRadius(null);
@@ -1900,7 +1975,7 @@ export function RoutePlayer() {
                 <div className="welcome-loop-flash" data-show={Boolean(welcomeFlashLoopName)} aria-hidden={!welcomeFlashLoopName}>
                   <span>Tour selected</span>
                   <strong>{welcomeFlashLoopName || "Tour"}</strong>
-                  <em>Preparing in a moment</em>
+                  <em>Opening in a moment</em>
                 </div>
               </div>
             </div>
@@ -1996,7 +2071,7 @@ export function RoutePlayer() {
           <div className="transport-cluster">
             <button
               className={`primary ${primary.className}`}
-              data-preparing={isPreparingRoute}
+              data-preparing={false}
               disabled={primary.disabled}
               onClick={handlePrimary}
               style={{ "--prepare-progress": `${cacheProgress.percent}%` } as CSSProperties}
@@ -2005,27 +2080,32 @@ export function RoutePlayer() {
             </button>
             {isLoopLanding && (playerState === "preflight" || playerState === "ready") && (
               <div className="prepare-route-note">
-                {playerState === "ready" ? (
-                  <>
-                    <p>Introduction is ready.</p>
-                    <p>Listen while parked, then Begin Drive when you are ready to move.</p>
-                  </>
-                ) : isPreparingRoute ? (
+                {isSavingOffline ? (
                   <>
                     <p className="cache-current" aria-live="polite">
-                      {cacheProgress.currentUrl ? `Downloading ${cacheFilename(cacheProgress.currentUrl)}` : ""}
+                      {cacheProgress.currentUrl ? `Saving ${cacheFilename(cacheProgress.currentUrl)}` : `Saving ${cacheProgress.percent}%`}
                     </p>
-                    <p>Audio is being stored on this device for offline playback.</p>
+                    <p>Saving this tour&apos;s audio to this browser cache.</p>
                   </>
+                ) : isSavedOffline ? (
+                  <p>This tour is saved offline on this device.</p>
                 ) : (
                   <>
-                    <p>Downloads the audio guide to your phone so the tour works offline, even with no signal.</p>
-                    <p>Location is requested on Begin Drive so the app can arm stops while foregrounded. If it is off, every stop still works by hand.</p>
+                    <p>This tour streams as you go. The app quietly preloads the next stops so playback starts fast.</p>
+                    <p>Location is requested on Begin Drive, not before.</p>
+                    <p>Optional: save the audio guide to this browser cache so it works with no signal. It installs nothing and runs nothing in the background.</p>
+                    {(selectedLoop?.id === "edge-of-town" || selectedLoop?.id === "complete-the-city") && (
+                      <p>This tour goes past city limits where signal can drop. You can save it offline first.</p>
+                    )}
+                    <button className="small-button offline-save-button" onClick={() => void saveTourOffline()} type="button">
+                      Save Tour Offline
+                    </button>
                     {cacheError && <p className="cache-error">{cacheError}</p>}
                   </>
                 )}
               </div>
             )}
+            {isBufferingAudio && <p className="buffering-line">Buffering audio...</p>}
             {isDriveActive && narrationPlayback !== "idle" && (
               <PlaybackSignal
                 label="Narration playback"
@@ -2048,14 +2128,11 @@ export function RoutePlayer() {
                 <span>Directions</span>
               </button>
               <button
-                aria-label={isPrepared ? "Stop list" : "Stop list locked, prepare first"}
+                aria-label="Stop list"
                 className="secondary stops-gate"
-                data-locked={!isPrepared}
-                disabled={!isPrepared}
+                data-locked={false}
                 onClick={() => {
-                  if (isPrepared) {
-                    setIsStopsBoardOpen((open) => !open);
-                  }
+                  setIsStopsBoardOpen((open) => !open);
                 }}
               >
                 Stop List

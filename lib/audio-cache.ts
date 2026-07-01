@@ -1,5 +1,4 @@
 import type { RoutePack } from "@/lib/route-data";
-import { getRouteAssetUrls } from "@/lib/route-data";
 
 export type CacheProgress = {
   complete: number;
@@ -27,19 +26,9 @@ export async function registerServiceWorker() {
   }
 }
 
-export async function isRouteCached(route: RoutePack) {
-  if (!("caches" in window)) {
-    return false;
-  }
-
-  const cache = await caches.open(routeCacheName(route.id));
-  const urls = getRouteAssetUrls(route);
-  const matches = await Promise.all(urls.map((url) => cache.match(url)));
-  return matches.every(Boolean);
-}
-
-export async function cacheRouteAudio(
+export async function cacheAudioUrls(
   route: RoutePack,
+  urls: string[],
   onProgress: (progress: CacheProgress) => void
 ) {
   if (!("caches" in window)) {
@@ -49,18 +38,30 @@ export async function cacheRouteAudio(
   await registerServiceWorker();
 
   const cache = await caches.open(routeCacheName(route.id));
-  const urls = getRouteAssetUrls(route);
+  const uniqueUrls = [...new Set(urls)];
   let complete = 0;
 
-  onProgress({ complete, total: urls.length, percent: 0 });
+  onProgress({ complete, total: uniqueUrls.length, percent: 0 });
 
-  for (const url of urls) {
+  for (const url of uniqueUrls) {
     onProgress({
       complete,
-      total: urls.length,
-      percent: Math.round((complete / urls.length) * 100),
+      total: uniqueUrls.length,
+      percent: Math.round((complete / uniqueUrls.length) * 100),
       currentUrl: url
     });
+
+    const cached = await cache.match(url);
+    if (cached) {
+      complete += 1;
+      onProgress({
+        complete,
+        total: uniqueUrls.length,
+        percent: Math.round((complete / uniqueUrls.length) * 100),
+        currentUrl: url
+      });
+      continue;
+    }
 
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), 20000);
@@ -83,8 +84,8 @@ export async function cacheRouteAudio(
     complete += 1;
     onProgress({
       complete,
-      total: urls.length,
-      percent: Math.round((complete / urls.length) * 100),
+      total: uniqueUrls.length,
+      percent: Math.round((complete / uniqueUrls.length) * 100),
       currentUrl: url
     });
   }
@@ -92,7 +93,36 @@ export async function cacheRouteAudio(
   return true;
 }
 
+export async function prefetchRouteAudio(route: RoutePack, urls: string[]) {
+  if (!("caches" in window) || urls.length === 0) {
+    return false;
+  }
+
+  try {
+    await cacheAudioUrls(route, urls, () => undefined);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function isAudioUrlCached(route: RoutePack, url: string) {
+  if (!("caches" in window)) {
+    return false;
+  }
+
+  const cache = await caches.open(routeCacheName(route.id));
+  return Boolean(await cache.match(url));
+}
+
 export async function fetchCachedAsset(url: string) {
+  if ("caches" in window) {
+    const response = await caches.match(url);
+    if (response) {
+      return response.arrayBuffer();
+    }
+  }
+
   try {
     const response = await fetch(url, { cache: "no-store" });
     if (response.ok) {
@@ -100,13 +130,6 @@ export async function fetchCachedAsset(url: string) {
     }
   } catch {
     // Offline playback falls back to Cache API storage below.
-  }
-
-  if ("caches" in window) {
-    const response = await caches.match(url);
-    if (response) {
-      return response.arrayBuffer();
-    }
   }
 
   const response = await fetch(url, { cache: "no-store" });

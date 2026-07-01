@@ -2022,6 +2022,22 @@ button {
   white-space: nowrap;
 }
 
+.offline-save-button {
+  min-height: 44px;
+  justify-self: start;
+  padding-inline: 14px;
+}
+
+.buffering-line {
+  margin: 0;
+  color: var(--ash);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
 .cache-error {
   border-left: 2px solid var(--blood-hot);
   color: var(--bone) !important;
