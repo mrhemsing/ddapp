@@ -4,6 +4,9 @@ import { getAdminDashboardData } from "@/lib/server/admin-catalog";
 import { AdminStopsClient } from "@/app/admin/stops/AdminStopsClient";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
 
 export default async function AdminStopsPage() {
   const session = await getAdminSession();

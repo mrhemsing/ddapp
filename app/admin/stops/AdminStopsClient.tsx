@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { AlertTriangle, Check, FileAudio, Map as MapIcon, Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 
 type StopStatus = "live" | "held";
@@ -227,6 +227,17 @@ export function AdminStopsClient({
   initialDashboard: Dashboard;
   adminEmail: string;
 }) {
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) {
+      return;
+    }
+
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+      .catch(() => undefined);
+  }, []);
+
   const [dashboard, setDashboard] = useState(initialDashboard);
   const [selectedTourId, setSelectedTourId] = useState(initialDashboard.tours[0]?.id ?? "");
   const selectedTour = dashboard.tours.find((tour) => tour.id === selectedTourId) ?? dashboard.tours[0];

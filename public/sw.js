@@ -16,6 +16,10 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  if (url.pathname.startsWith("/admin") || url.pathname.startsWith("/api/admin")) {
+    return;
+  }
+
   if (url.pathname.startsWith("/audio/")) {
     event.respondWith(networkFirst(request));
     return;
