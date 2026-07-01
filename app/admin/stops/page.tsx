@@ -23,7 +23,7 @@ export default async function AdminStopsPage() {
           {!allowlistReady ? (
             <p className="admin-warning">Set DARK_DRIVES_ADMIN_EMAILS before using this tool.</p>
           ) : null}
-          <Link className="admin-link" href="/activate">
+          <Link className="admin-link" href="/admin/sign-in">
             Sign in
           </Link>
         </section>
