@@ -2803,7 +2803,7 @@ button {
   gap: 10px;
 }
 
-.admin-map svg {
+.admin-map > svg {
   width: 100%;
   min-height: 220px;
   border: 1px solid rgba(230, 225, 214, 0.1);
