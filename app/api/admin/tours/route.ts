@@ -84,8 +84,7 @@ export async function POST(request: Request) {
     if (action === "addStop") {
       const membership = await addStopToTour({
         tourId: String(body.tourId ?? ""),
-        stopId: String(body.stopId ?? ""),
-        narrationAudio: String(body.narrationAudio ?? "")
+        stopId: String(body.stopId ?? "")
       });
 
       await prisma.adminAuditLog.create({
@@ -105,10 +104,7 @@ export async function POST(request: Request) {
         membershipId: String(body.membershipId ?? ""),
         position: toInt(body.position, 1),
         isStart: Boolean(body.isStart),
-        isFinale: Boolean(body.isFinale),
-        narrationAudio: String(body.narrationAudio ?? ""),
-        driveToNextAudio: String(body.driveToNextAudio ?? ""),
-        audioStatus: String(body.audioStatus ?? "needs_generation")
+        isFinale: Boolean(body.isFinale)
       });
 
       await prisma.adminAuditLog.create({

@@ -569,7 +569,7 @@ export function AdminStopsClient({
           <div className="admin-panel-head">
             <div>
               <p className="admin-kicker">Tour placement</p>
-              <h2>{membershipForm.id ? "Edit audio and order" : "Add existing stop"}</h2>
+              <h2>{membershipForm.id ? "Edit order" : "Add existing stop"}</h2>
             </div>
           </div>
 
@@ -594,20 +594,16 @@ export function AdminStopsClient({
             </label>
             <label>
               Audio status
-              <select value={membershipForm.audioStatus} onChange={(event) => setMembershipForm((current) => ({ ...current, audioStatus: event.target.value }))}>
-                <option value="ready">Ready</option>
-                <option value="needs_generation">Needs generation</option>
-                <option value="queued">Queued</option>
-              </select>
+              <input value={membershipForm.audioStatus} readOnly />
             </label>
           </div>
           <label>
-            Stop narration audio file
-            <input value={membershipForm.narrationAudio} onChange={(event) => setMembershipForm((current) => ({ ...current, narrationAudio: event.target.value }))} />
+            Current stop narration audio
+            <input value={membershipForm.narrationAudio || "Needs generation"} readOnly />
           </label>
           <label>
-            Drive-leg audio to next stop
-            <input value={membershipForm.driveToNextAudio} onChange={(event) => setMembershipForm((current) => ({ ...current, driveToNextAudio: event.target.value }))} />
+            Current drive-leg audio to next stop
+            <input value={membershipForm.driveToNextAudio || "Needs generation"} readOnly />
           </label>
           <label className="admin-check-row">
             <input type="checkbox" checked={membershipForm.isStart} onChange={(event) => setMembershipForm((current) => ({ ...current, isStart: event.target.checked }))} />
@@ -631,16 +627,12 @@ export function AdminStopsClient({
                         membershipId: membershipForm.id,
                         position: membershipForm.position,
                         isStart: membershipForm.isStart,
-                        isFinale: membershipForm.isFinale,
-                        narrationAudio: membershipForm.narrationAudio,
-                        driveToNextAudio: membershipForm.driveToNextAudio,
-                        audioStatus: membershipForm.audioStatus
+                        isFinale: membershipForm.isFinale
                       }
                     : {
                         action: "addStop",
                         tourId: selectedTour?.id,
-                        stopId: membershipForm.stopId,
-                        narrationAudio: membershipForm.narrationAudio
+                        stopId: membershipForm.stopId
                       },
                   membershipForm.id ? "Tour stop saved." : "Stop added to tour."
                 )

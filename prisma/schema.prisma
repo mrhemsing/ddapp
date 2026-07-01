@@ -21,11 +21,35 @@ enum AdminStopStatus {
   held
 }
 
+enum CityStatus {
+  draft
+  live
+  archived
+}
+
+enum AdminTourStatus {
+  draft
+  published
+  archived
+}
+
 enum OrderProposalStatus {
   draft
   approved
   rejected
   published
+}
+
+enum AudioSubjectType {
+  stop
+  leg
+}
+
+enum AudioAssetStatus {
+  pending
+  generating
+  ready
+  failed
 }
 
 model User {
@@ -84,31 +108,45 @@ model MagicLinkToken {
 
 model AdminStop {
   id              String          @id @default(cuid())
-  slug            String          @unique
+  cityId          String
+  slug            String
   name            String
   address         String?
   lat             Float
   lng             Float
   narrationScript String          @db.Text
+  scriptHash      String
   safetyWarning   String          @db.Text
   themeTags       String[]
   status          AdminStopStatus @default(held)
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
+  city            City            @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  fromLegs        Leg[]           @relation("LegFromStop")
+  toLegs          Leg[]           @relation("LegToStop")
   tourStops       TourStop[]
 
+  @@unique([cityId, slug])
+  @@index([cityId])
   @@index([status])
 }
 
 model AdminTour {
   id                    String          @id @default(cuid())
-  slug                  String          @unique
+  cityId                String
+  slug                  String
   title                 String
   targetDurationMinutes Int             @default(70)
+  status                AdminTourStatus @default(draft)
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
+  city                  City            @relation(fields: [cityId], references: [id], onDelete: Cascade)
   stops                 TourStop[]
   proposals             OrderProposal[]
+
+  @@unique([cityId, slug])
+  @@index([cityId])
+  @@index([status])
 }
 
 model TourStop {
@@ -118,9 +156,6 @@ model TourStop {
   position         Int
   isStart          Boolean   @default(false)
   isFinale         Boolean   @default(false)
-  narrationAudio   String?
-  driveToNextAudio String?
-  audioStatus      String    @default("ready")
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   stop             AdminStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
@@ -129,6 +164,80 @@ model TourStop {
   @@unique([tourId, stopId])
   @@unique([tourId, position])
   @@index([stopId])
+}
+
+model City {
+  id                   String        @id @default(cuid())
+  slug                 String        @unique
+  packSlug             String        @unique
+  name                 String
+  timezone             String
+  mapCenterLat         Float
+  mapCenterLng         Float
+  defaultVoiceConfigId String?
+  status               CityStatus    @default(draft)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  defaultVoiceConfig   VoiceConfig?  @relation("CityDefaultVoice", fields: [defaultVoiceConfigId], references: [id], onDelete: SetNull)
+  stops                AdminStop[]
+  tours                AdminTour[]
+  legs                 Leg[]
+  voiceConfigs         VoiceConfig[] @relation("CityVoiceConfigs")
+
+  @@index([status])
+}
+
+model Leg {
+  id         String    @id @default(cuid())
+  cityId     String
+  fromStopId String
+  toStopId   String
+  driveScript String   @db.Text
+  scriptHash String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  city       City      @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  fromStop   AdminStop @relation("LegFromStop", fields: [fromStopId], references: [id], onDelete: Cascade)
+  toStop     AdminStop @relation("LegToStop", fields: [toStopId], references: [id], onDelete: Cascade)
+
+  @@unique([cityId, fromStopId, toStopId])
+  @@index([fromStopId])
+  @@index([toStopId])
+}
+
+model VoiceConfig {
+  id         String   @id @default(cuid())
+  cityId     String?
+  label      String
+  provider   String
+  voiceId    String
+  modelId    String
+  settings   Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  city       City?    @relation("CityVoiceConfigs", fields: [cityId], references: [id], onDelete: Cascade)
+  defaultFor City[]   @relation("CityDefaultVoice")
+
+  @@unique([cityId, label])
+  @@index([cityId])
+}
+
+model AudioAsset {
+  id                  String           @id @default(cuid())
+  subjectType         AudioSubjectType
+  subjectId           String
+  contentHash         String
+  voiceConfigSnapshot Json
+  storagePath         String
+  durationSeconds     Float
+  fileBytes           Int
+  status              AudioAssetStatus @default(pending)
+  error               String?
+  createdAt           DateTime         @default(now())
+
+  @@unique([subjectType, subjectId, contentHash])
+  @@index([subjectType, subjectId, status])
+  @@index([contentHash])
 }
 
 model OrderProposal {
