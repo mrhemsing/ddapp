@@ -2502,6 +2502,337 @@ button {
   justify-self: start;
 }
 
+.admin-shell {
+  min-height: 100svh;
+  width: min(1280px, 100%);
+  margin: 0 auto;
+  padding: 28px;
+}
+
+.admin-header,
+.admin-panel-head,
+.admin-toolbar,
+.admin-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.admin-header {
+  border-bottom: 1px solid var(--ash-line);
+  padding-bottom: 20px;
+}
+
+.admin-header h1,
+.admin-denied h1,
+.admin-panel h2 {
+  margin: 0;
+  color: var(--bone);
+  font-family: var(--font-display);
+  line-height: 0.98;
+  text-transform: uppercase;
+}
+
+.admin-header h1,
+.admin-denied h1 {
+  font-size: clamp(44px, 7vw, 84px);
+}
+
+.admin-panel h2 {
+  font-size: 30px;
+}
+
+.admin-header p,
+.admin-denied p,
+.admin-muted {
+  margin: 0;
+  color: var(--ash);
+  line-height: 1.45;
+}
+
+.admin-kicker,
+.admin-status,
+.admin-section-title,
+.admin-panel label {
+  color: var(--sick);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.95fr) minmax(360px, 1.05fr);
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.admin-panel,
+.admin-denied {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--ash-line);
+  background: rgba(18, 16, 14, 0.7);
+  padding: 18px;
+}
+
+.admin-denied {
+  max-width: 620px;
+  margin: 12svh auto 0;
+}
+
+.admin-panel-wide {
+  align-content: start;
+}
+
+.admin-form {
+  grid-row: span 2;
+}
+
+.admin-form label {
+  display: grid;
+  gap: 7px;
+}
+
+.admin-two,
+.admin-split,
+.admin-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-form input,
+.admin-form textarea,
+.admin-panel select {
+  width: 100%;
+  border: 1px solid rgba(230, 225, 214, 0.14);
+  background: rgba(6, 5, 5, 0.72);
+  color: var(--bone);
+  font: inherit;
+  letter-spacing: 0;
+  padding: 10px;
+}
+
+.admin-form textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.admin-form textarea:last-of-type {
+  min-height: 180px;
+}
+
+.admin-stop-list,
+.admin-diff,
+.admin-reasons {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-stop-row,
+.admin-diff div {
+  display: grid;
+  grid-template-columns: 42px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 54px;
+  border: 1px solid rgba(230, 225, 214, 0.1);
+  background: rgba(10, 9, 8, 0.66);
+  color: var(--bone);
+  padding: 10px;
+  text-align: left;
+}
+
+.admin-stop-row {
+  cursor: pointer;
+}
+
+.admin-stop-row span,
+.admin-stop-row em,
+.admin-diff span,
+.admin-diff em,
+.admin-metrics span {
+  color: var(--ash);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.admin-stop-row strong,
+.admin-diff strong {
+  color: var(--bone);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.admin-stop-row span,
+.admin-diff span,
+.admin-diff div[data-moved="true"] em {
+  color: var(--sick);
+}
+
+.admin-diff div[data-moved="true"] {
+  border-color: rgba(114, 255, 87, 0.32);
+  background: rgba(21, 61, 28, 0.16);
+}
+
+.admin-action,
+.admin-danger,
+.admin-icon-button,
+.admin-link {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid rgba(114, 255, 87, 0.38);
+  background: rgba(21, 61, 28, 0.18);
+  color: var(--sick);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  padding: 0 13px;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.admin-action svg,
+.admin-danger svg,
+.admin-icon-button svg,
+.admin-section-title svg {
+  width: 15px;
+  height: 15px;
+}
+
+.admin-icon-button {
+  width: 44px;
+  padding: 0;
+}
+
+.admin-action:disabled,
+.admin-danger:disabled {
+  cursor: default;
+  opacity: 0.46;
+}
+
+.admin-danger {
+  border-color: rgba(179, 0, 15, 0.52);
+  background: rgba(75, 5, 7, 0.22);
+  color: var(--blood-hot);
+}
+
+.admin-link {
+  justify-self: start;
+}
+
+.admin-notice,
+.admin-error,
+.admin-warning {
+  margin: 14px 0 0;
+  border: 1px solid rgba(114, 255, 87, 0.24);
+  background: rgba(21, 61, 28, 0.16);
+  color: var(--bone);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 12px;
+  text-transform: uppercase;
+}
+
+.admin-error,
+.admin-warning {
+  border-color: rgba(179, 0, 15, 0.42);
+  background: rgba(75, 5, 7, 0.2);
+  color: var(--blood-hot);
+}
+
+.admin-metrics div,
+.admin-callout {
+  border: 1px solid rgba(230, 225, 214, 0.1);
+  background: rgba(10, 9, 8, 0.58);
+  padding: 12px;
+}
+
+.admin-metrics div {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-metrics strong {
+  color: var(--bone);
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.admin-map {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-map svg {
+  width: 100%;
+  min-height: 220px;
+  border: 1px solid rgba(230, 225, 214, 0.1);
+  background:
+    linear-gradient(rgba(230, 225, 214, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(230, 225, 214, 0.04) 1px, transparent 1px),
+    rgba(10, 9, 8, 0.66);
+  background-size: 18px 18px;
+}
+
+.admin-map polyline {
+  fill: none;
+  stroke: var(--blood-hot);
+  stroke-dasharray: 6 6;
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+
+.admin-map circle {
+  fill: var(--sick);
+  stroke: #041207;
+  stroke-width: 1.4;
+}
+
+.admin-callout {
+  margin: 8px 0 0;
+  color: var(--bone-dim);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.admin-reasons p {
+  margin: 0;
+  border-top: 1px solid rgba(230, 225, 214, 0.08);
+  color: var(--ash);
+  line-height: 1.45;
+  padding-top: 10px;
+}
+
+.admin-reasons strong {
+  display: block;
+  color: var(--bone);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 @media (max-width: 760px) {
   .dev-audio-page {
     padding: 18px;
@@ -2519,6 +2850,28 @@ button {
   .voice-audition-script,
   .voice-audition-grid {
     grid-template-columns: 1fr;
+  }
+
+  .admin-shell {
+    padding: 18px;
+  }
+
+  .admin-header,
+  .admin-panel-head,
+  .admin-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-grid,
+  .admin-two,
+  .admin-split,
+  .admin-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-form {
+    grid-row: auto;
   }
 }
 

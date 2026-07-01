@@ -16,12 +16,24 @@ enum MagicLinkPurpose {
   signin
 }
 
+enum AdminStopStatus {
+  live
+  held
+}
+
+enum OrderProposalStatus {
+  draft
+  approved
+  rejected
+  published
+}
+
 model User {
-  id                 String     @id @default(cuid())
-  email              String     @unique
-  marketingConsent   Boolean    @default(false)
+  id                 String           @id @default(cuid())
+  email              String           @unique
+  marketingConsent   Boolean          @default(false)
   marketingConsentAt DateTime?
-  createdAt          DateTime   @default(now())
+  createdAt          DateTime         @default(now())
   devices            Device[]
   entitlements       Entitlement[]
   magicLinks         MagicLinkToken[]
@@ -68,4 +80,85 @@ model MagicLinkToken {
 
   @@index([email])
   @@index([expiresAt])
+}
+
+model AdminStop {
+  id              String          @id @default(cuid())
+  slug            String          @unique
+  name            String
+  address         String?
+  lat             Float
+  lng             Float
+  narrationScript String          @db.Text
+  safetyWarning   String          @db.Text
+  themeTags       String[]
+  status          AdminStopStatus @default(held)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  tourStops       TourStop[]
+
+  @@index([status])
+}
+
+model AdminTour {
+  id                    String          @id @default(cuid())
+  slug                  String          @unique
+  title                 String
+  targetDurationMinutes Int             @default(70)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  stops                 TourStop[]
+  proposals             OrderProposal[]
+}
+
+model TourStop {
+  id        String    @id @default(cuid())
+  tourId    String
+  stopId    String
+  position  Int
+  isStart   Boolean   @default(false)
+  isFinale  Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  stop      AdminStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
+  tour      AdminTour @relation(fields: [tourId], references: [id], onDelete: Cascade)
+
+  @@unique([tourId, stopId])
+  @@unique([tourId, position])
+  @@index([stopId])
+}
+
+model OrderProposal {
+  id                    String              @id @default(cuid())
+  tourId                String
+  status                OrderProposalStatus @default(draft)
+  trigger               String
+  currentOrder          Json
+  proposedOrder         Json
+  placementReasons      Json
+  invalidatedLegs       Json
+  issues                Json
+  engineSummary         String              @db.Text
+  durationMinutes       Int
+  targetDurationMinutes Int
+  durationDeltaMinutes  Int
+  createdByEmail        String
+  createdAt             DateTime            @default(now())
+  approvedAt            DateTime?
+  publishedAt           DateTime?
+  tour                  AdminTour           @relation(fields: [tourId], references: [id], onDelete: Cascade)
+
+  @@index([tourId, createdAt])
+  @@index([status])
+}
+
+model AdminAuditLog {
+  id        String   @id @default(cuid())
+  actor     String
+  action    String
+  target    String
+  details   Json
+  createdAt DateTime @default(now())
+
+  @@index([actor, createdAt])
 }
