@@ -192,10 +192,10 @@ function AdminRouteMap({
   return (
     <div className="admin-map">
       <div className="admin-section-title">
-        <MapIcon aria-hidden="true" />
+        <MapIcon className="admin-map-title-icon" aria-hidden="true" />
         {title}
       </div>
-      <svg viewBox="0 0 300 160" role="img" aria-label={`${title} map preview`}>
+      <svg className="admin-map-canvas" viewBox="0 0 300 160" role="img" aria-label={`${title} map preview`}>
         {currentPoints.length > 1 ? <polyline className="admin-map-current-line" points={pointString(currentPoints)} /> : null}
         {proposedPoints.length > 1 ? <polyline className="admin-map-proposed-line" points={pointString(proposedPoints)} /> : null}
         {displayPoints.map((point) => (

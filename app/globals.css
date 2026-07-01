@@ -2803,7 +2803,7 @@ button {
   gap: 10px;
 }
 
-.admin-map > svg {
+.admin-map-canvas {
   width: 100%;
   min-height: 220px;
   border: 1px solid rgba(230, 225, 214, 0.1);
@@ -2812,6 +2812,15 @@ button {
     linear-gradient(90deg, rgba(230, 225, 214, 0.04) 1px, transparent 1px),
     rgba(10, 9, 8, 0.66);
   background-size: 18px 18px;
+}
+
+.admin-map .admin-map-title-icon {
+  width: 15px !important;
+  height: 15px !important;
+  min-height: 0 !important;
+  flex: 0 0 15px;
+  border: 0 !important;
+  background: none !important;
 }
 
 .admin-map polyline {
