@@ -2597,14 +2597,23 @@ button {
   gap: 7px;
 }
 
-.admin-form .admin-check-row {
-  display: flex;
+.admin-form label.admin-check-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
   align-items: center;
-  justify-content: flex-start;
+  justify-content: start;
+  gap: 10px;
 }
 
-.admin-form .admin-check-row input {
-  width: auto;
+.admin-form label.admin-check-row input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+}
+
+.admin-form label.admin-check-row span {
+  min-width: 0;
 }
 
 .admin-two,

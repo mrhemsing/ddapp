@@ -511,11 +511,11 @@ export function AdminStopsClient({
           </label>
           <label className="admin-check-row">
             <input type="checkbox" checked={membershipForm.isStart} onChange={(event) => setMembershipForm((current) => ({ ...current, isStart: event.target.checked }))} />
-            Start stop
+            <span>Start stop</span>
           </label>
           <label className="admin-check-row">
             <input type="checkbox" checked={membershipForm.isFinale} onChange={(event) => setMembershipForm((current) => ({ ...current, isFinale: event.target.checked }))} />
-            Finale stop
+            <span>Finale stop</span>
           </label>
           <div className="admin-toolbar">
             <button
