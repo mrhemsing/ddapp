@@ -84,6 +84,13 @@ type MembershipForm = {
   audioStatus: string;
 };
 
+type MapPoint = {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+};
+
 const emptyStopForm: StopForm = {
   name: "",
   address: "",
@@ -109,23 +116,108 @@ function stopLabel(stopsById: Map<string, AdminStop>, id: string) {
   return stopsById.get(id)?.name ?? id;
 }
 
-function buildMapPoints(stops: AdminStop[]) {
-  if (stops.length === 0) {
+function orderedTourStops(tour: Tour | undefined) {
+  return [...(tour?.stops ?? [])].sort((a, b) => a.position - b.position).map((membership) => membership.stop);
+}
+
+function parseDraftStop(form: StopForm): AdminStop | null {
+  if (form.id) {
+    return null;
+  }
+
+  if (!form.lat.trim() || !form.lng.trim()) {
+    return null;
+  }
+
+  const lat = Number(form.lat);
+  const lng = Number(form.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null;
+  }
+
+  return {
+    id: "draft-stop",
+    slug: "draft-stop",
+    name: form.name.trim() || "New stop",
+    address: form.address.trim() || null,
+    lat,
+    lng,
+    narrationScript: form.narrationScript,
+    safetyWarning: form.safetyWarning,
+    themeTags: form.themeTags.split(",").map((tag) => tag.trim()).filter(Boolean),
+    status: form.status
+  };
+}
+
+function buildMapPoints(stops: AdminStop[], boundsStops = stops): MapPoint[] {
+  if (stops.length === 0 || boundsStops.length === 0) {
     return [];
   }
 
-  const minLat = Math.min(...stops.map((stop) => stop.lat));
-  const maxLat = Math.max(...stops.map((stop) => stop.lat));
-  const minLng = Math.min(...stops.map((stop) => stop.lng));
-  const maxLng = Math.max(...stops.map((stop) => stop.lng));
+  const minLat = Math.min(...boundsStops.map((stop) => stop.lat));
+  const maxLat = Math.max(...boundsStops.map((stop) => stop.lat));
+  const minLng = Math.min(...boundsStops.map((stop) => stop.lng));
+  const maxLng = Math.max(...boundsStops.map((stop) => stop.lng));
   const latSpan = Math.max(0.01, maxLat - minLat);
   const lngSpan = Math.max(0.01, maxLng - minLng);
 
-  return stops.map((stop) => {
+  return stops.map((stop, index) => {
     const x = 18 + ((stop.lng - minLng) / lngSpan) * 264;
     const y = 142 - ((stop.lat - minLat) / latSpan) * 112;
-    return { id: stop.id, x, y };
+    return { id: stop.id, label: stop.id === "draft-stop" ? "NEW" : String(index + 1), x, y };
   });
+}
+
+function pointString(points: MapPoint[]) {
+  return points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+}
+
+function AdminRouteMap({
+  currentStops,
+  proposedStops,
+  draftStop,
+  title
+}: {
+  currentStops: AdminStop[];
+  proposedStops?: AdminStop[];
+  draftStop?: AdminStop | null;
+  title: string;
+}) {
+  const boundsStops = [...currentStops, ...(proposedStops ?? []), ...(draftStop ? [draftStop] : [])];
+  const currentPoints = buildMapPoints(currentStops, boundsStops);
+  const proposedPoints = proposedStops?.length ? buildMapPoints(proposedStops, boundsStops) : [];
+  const draftPoints = draftStop ? buildMapPoints([draftStop], boundsStops) : [];
+  const displayPoints = proposedPoints.length ? proposedPoints : currentPoints;
+
+  return (
+    <div className="admin-map">
+      <div className="admin-section-title">
+        <MapIcon aria-hidden="true" />
+        {title}
+      </div>
+      <svg viewBox="0 0 300 160" role="img" aria-label={`${title} map preview`}>
+        {currentPoints.length > 1 ? <polyline className="admin-map-current-line" points={pointString(currentPoints)} /> : null}
+        {proposedPoints.length > 1 ? <polyline className="admin-map-proposed-line" points={pointString(proposedPoints)} /> : null}
+        {displayPoints.map((point) => (
+          <g key={point.id}>
+            <circle cx={point.x} cy={point.y} r={point.label === "1" ? 5 : 4} />
+            <text x={point.x} y={point.y - 7}>{point.label}</text>
+          </g>
+        ))}
+        {draftPoints.map((point) => (
+          <g key={point.id} className="admin-map-draft-point">
+            <circle cx={point.x} cy={point.y} r="5.5" />
+            <text x={point.x} y={point.y - 8}>{point.label}</text>
+          </g>
+        ))}
+      </svg>
+      <div className="admin-map-legend">
+        <span><i className="admin-map-key-current" /> Current order</span>
+        {proposedPoints.length ? <span><i className="admin-map-key-proposed" /> Suggested order</span> : null}
+        {draftStop ? <span><i className="admin-map-key-draft" /> New stop</span> : null}
+      </div>
+    </div>
+  );
 }
 
 export function AdminStopsClient({
@@ -153,9 +245,10 @@ export function AdminStopsClient({
     }
     return map;
   }, [dashboard.stops]);
-  const latestProposal = dashboard.proposals.find((proposal) => proposal.tourId === selectedTour?.id) ?? dashboard.proposals[0];
+  const latestProposal = dashboard.proposals.find((proposal) => proposal.tourId === selectedTour?.id);
+  const currentTourStops = orderedTourStops(selectedTour);
   const proposedStops = latestProposal?.proposedOrder.map((id) => stopsById.get(id)).filter((stop): stop is AdminStop => Boolean(stop));
-  const proposedPoints = buildMapPoints(proposedStops ?? []);
+  const draftStop = parseDraftStop(stopForm);
   const availableStops = dashboard.stops.filter((stop) => !selectedTour?.stops.some((item) => item.stopId === stop.id));
 
   function chooseTour(tourId: string) {
@@ -387,6 +480,13 @@ export function AdminStopsClient({
             </button>
           </div>
 
+          <AdminRouteMap
+            currentStops={currentTourStops}
+            proposedStops={latestProposal ? proposedStops : undefined}
+            draftStop={draftStop}
+            title={latestProposal ? "Current and suggested order" : "Current tour map"}
+          />
+
           <div className="admin-stop-list">
             {selectedTour?.stops.map((membership) => (
               <button key={membership.id} className="admin-stop-row" type="button" onClick={() => editMembership(membership)}>
@@ -609,18 +709,7 @@ export function AdminStopsClient({
                 })}
               </div>
 
-              <div className="admin-map">
-                <div className="admin-section-title">
-                  <MapIcon aria-hidden="true" />
-                  Route preview
-                </div>
-                <svg viewBox="0 0 300 160" role="img" aria-label="Proposed route map preview">
-                  <polyline points={proposedPoints.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ")} />
-                  {proposedPoints.map((point, index) => (
-                    <circle key={point.id} cx={point.x} cy={point.y} r={index === 0 ? 5 : 4} />
-                  ))}
-                </svg>
-              </div>
+              <AdminRouteMap currentStops={currentTourStops} proposedStops={proposedStops} title="Suggested route preview" />
 
               <div className="admin-split">
                 <div>

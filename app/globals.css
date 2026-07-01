@@ -2816,16 +2816,81 @@ button {
 
 .admin-map polyline {
   fill: none;
-  stroke: var(--blood-hot);
-  stroke-dasharray: 6 6;
   stroke-linecap: round;
   stroke-width: 2;
+}
+
+.admin-map-current-line {
+  stroke: rgba(230, 225, 214, 0.38);
+  stroke-dasharray: 3 7;
+}
+
+.admin-map-proposed-line {
+  stroke: var(--blood-hot);
+  stroke-width: 2.6;
 }
 
 .admin-map circle {
   fill: var(--sick);
   stroke: #041207;
   stroke-width: 1.4;
+}
+
+.admin-map text {
+  fill: var(--bone);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0;
+  paint-order: stroke;
+  stroke: #050504;
+  stroke-width: 2px;
+  text-anchor: middle;
+}
+
+.admin-map-draft-point circle {
+  fill: var(--blood-hot);
+  stroke: var(--bone);
+  stroke-width: 1.2;
+}
+
+.admin-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  color: var(--ash);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.admin-map-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-map-legend i {
+  display: inline-block;
+  width: 18px;
+  height: 3px;
+}
+
+.admin-map-key-current {
+  background: repeating-linear-gradient(90deg, rgba(230, 225, 214, 0.45) 0 4px, transparent 4px 8px);
+}
+
+.admin-map-key-proposed {
+  background: var(--blood-hot);
+}
+
+.admin-map-key-draft {
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 999px;
+  background: var(--blood-hot);
 }
 
 .admin-callout {
