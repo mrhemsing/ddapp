@@ -270,18 +270,16 @@ button {
   border-radius: 999px;
   background: var(--blood-hot);
   box-shadow: 0 0 18px rgba(179, 0, 15, 0.58);
-  animation: presencePulse var(--heartbeat-ms, 2000ms) ease-in-out infinite;
 }
 
-.presence[data-state="arrived"] .presence-dot,
-.presence[data-state="signal-active"] .presence-dot,
-.presence[data-state="paused"] .presence-dot,
-.presence[data-state="complete"] .presence-dot {
+.presence[data-state="ready"] .presence-dot,
+.presence[data-state="playing"] .presence-dot {
+  animation: presencePulse var(--heartbeat-ms, 980ms) ease-in-out infinite;
   animation-duration: var(--heartbeat-ms, 980ms);
 }
 
-.presence[data-state="arrived"] .presence-dot,
-.presence[data-state="signal-active"] .presence-dot,
+.presence[data-state="ready"] .presence-dot,
+.presence[data-state="playing"] .presence-dot,
 .presence[data-state="complete"] .presence-dot {
   background: var(--sick);
   box-shadow: 0 0 18px rgba(114, 255, 87, 0.44);
@@ -1189,6 +1187,16 @@ button {
   color: var(--sick);
 }
 
+.exit-button {
+  border-color: rgba(200, 148, 82, 0.4);
+  color: rgb(200, 148, 82);
+}
+
+.exit-button:hover {
+  border-color: rgba(200, 148, 82, 0.72);
+  color: rgb(226, 173, 103);
+}
+
 .secondary:disabled,
 .small-button:disabled {
   cursor: default;
@@ -1817,6 +1825,19 @@ button {
   padding-top: 12px;
 }
 
+.completion-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.completion-actions .small-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 .field {
   display: grid;
   gap: 7px;
@@ -1949,8 +1970,10 @@ button {
 .active-node .stop-node,
 .active-node .start-node,
 .active-node .finish-node {
+  fill: var(--sick);
+  stroke: #041207;
   stroke-width: 1.8;
-  filter: drop-shadow(0 0 5px rgba(179, 0, 15, 0.58));
+  filter: drop-shadow(0 0 6px rgba(114, 255, 87, 0.62));
 }
 
 .route-map text {

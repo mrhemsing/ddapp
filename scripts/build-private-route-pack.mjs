@@ -293,8 +293,7 @@ for (const scriptStop of saskatoonAll40Stops) {
   }
 
   const parkPoint = parkPointFor(config, scriptStop.id);
-  const isHeldForParkPoint = Boolean(config.needsParkPoint && !parkPoint);
-  const isSealed = Boolean(config.sealed || isHeldForParkPoint);
+  const isSealed = Boolean(config.sealed);
   const story = {
     teaser: teaserFrom(scriptStop.script),
     body: scriptStop.script
@@ -305,9 +304,7 @@ for (const scriptStop of saskatoonAll40Stops) {
       id: scriptStop.id,
       title: scriptStop.title,
       order: config.order ?? scriptStop.index,
-      reason: isHeldForParkPoint
-        ? "Held from the live drive until a verified legal parkPoint is set."
-        : "Sealed informational entry with no driveable coordinates.",
+      reason: "Sealed informational entry with no driveable coordinates.",
       story,
       safetyNote: scriptStop.safetyNote
     });

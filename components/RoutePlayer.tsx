@@ -28,7 +28,7 @@ type NarrationPlayback = "idle" | "playing" | "paused";
 type RitualPlayback = "idle" | "playing" | "played";
 type LegalStatus = "checking" | "accepted" | "blocked";
 type ImHereState = "enroute" | "arrived";
-type StopStatus = "waiting" | "arrived" | "signal-active" | "paused" | "complete";
+type StopStatus = "approaching" | "ready" | "playing" | "paused" | "complete";
 const ROUTE_NARRATION_VOLUME = 1.45;
 const activeDriveStates: PlayerState[] = ["intro", "traveling", "approaching", "armed", "playing", "played", "outro", "outroPlayed"];
 const resumeStorageKey = "dark-drives:route-session";
@@ -130,31 +130,31 @@ function approachProgress(distanceMeters: number, approachRadiusM: number, arriv
 function stateCopy(playerState: PlayerState) {
   if (playerState === "preflight") return "Files sealed";
   if (playerState === "ready") return "Ready";
-  if (playerState === "intro") return "Opening signal";
+  if (playerState === "intro") return "Playing";
   if (playerState === "introPlayed") return "Ready";
-  if (playerState === "traveling" || playerState === "approaching") return "Waiting";
-  if (playerState === "armed") return "Arrived";
-  if (playerState === "playing") return "Signal active";
+  if (playerState === "traveling" || playerState === "approaching") return "Approaching";
+  if (playerState === "armed") return "Ready";
+  if (playerState === "playing") return "Playing";
   if (playerState === "played") return "Complete";
-  if (playerState === "outro") return "Final signal";
+  if (playerState === "outro") return "Playing";
   if (playerState === "outroPlayed") return "Final heard";
-  return "Route closed";
+  return "Tour complete";
 }
 
 function stopStatusFor(playerState: PlayerState, narrationPlayback: NarrationPlayback): StopStatus {
   if (playerState === "played" || playerState === "outroPlayed") return "complete";
   if ((playerState === "playing" || playerState === "outro") && narrationPlayback === "paused") return "paused";
-  if (playerState === "playing" || playerState === "outro") return "signal-active";
-  if (playerState === "armed") return "arrived";
-  return "waiting";
+  if (playerState === "playing" || playerState === "outro") return "playing";
+  if (playerState === "armed") return "ready";
+  return "approaching";
 }
 
 function stopStatusLabel(status: StopStatus) {
-  if (status === "arrived") return "Arrived";
-  if (status === "signal-active") return "Signal active";
+  if (status === "ready") return "Ready";
+  if (status === "playing") return "Playing";
   if (status === "paused") return "Paused";
   if (status === "complete") return "Complete";
-  return "Waiting";
+  return "Approaching";
 }
 
 function localTime(timestamp: string) {
@@ -188,6 +188,55 @@ function isCurrentLegalAcceptance(value: string | null) {
   } catch {
     return false;
   }
+}
+
+function playLegalAcceptSting() {
+  const audioWindow = window as typeof window & { webkitAudioContext?: typeof AudioContext };
+  const AudioContextConstructor = window.AudioContext ?? audioWindow.webkitAudioContext;
+  if (!AudioContextConstructor) {
+    return;
+  }
+
+  try {
+    const context = new AudioContextConstructor();
+    const master = context.createGain();
+    const filter = context.createBiquadFilter();
+    const low = context.createOscillator();
+    const high = context.createOscillator();
+    const now = context.currentTime;
+
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(980, now);
+    filter.frequency.exponentialRampToValueAtTime(420, now + 2.8);
+    master.gain.setValueAtTime(0.0001, now);
+    master.gain.exponentialRampToValueAtTime(0.065, now + 0.08);
+    master.gain.exponentialRampToValueAtTime(0.0001, now + 2.8);
+
+    low.type = "triangle";
+    high.type = "sine";
+    low.frequency.setValueAtTime(146.83, now);
+    low.frequency.exponentialRampToValueAtTime(130.81, now + 2.8);
+    high.frequency.setValueAtTime(220, now);
+    high.frequency.exponentialRampToValueAtTime(196, now + 2.8);
+
+    low.connect(filter);
+    high.connect(filter);
+    filter.connect(master);
+    master.connect(context.destination);
+    low.start(now);
+    high.start(now + 0.18);
+    low.stop(now + 2.9);
+    high.stop(now + 2.9);
+    window.setTimeout(() => void context.close(), 3200);
+  } catch {
+    // The sting is tone only. Entering the app must never depend on audio support.
+  }
+}
+
+function reviewUrl() {
+  const subject = encodeURIComponent("Dark Drives review");
+  const body = encodeURIComponent("Tour:\nRating:\nWhat worked:\nWhat was confusing:\n");
+  return `mailto:reviews@darkdrives.app?subject=${subject}&body=${body}`;
 }
 
 function LegalDocument({ document }: { document: typeof legalDocuments.terms }) {
@@ -536,7 +585,7 @@ export function RoutePlayer() {
   );
   const skipLabel = needsSkipConfirm && pendingSkipStopId === currentStop?.id ? "Confirm Skip" : "Skip";
   const stopStatus = stopStatusFor(playerState, narrationPlayback);
-  const imHereState: ImHereState = stopStatus === "waiting" ? "enroute" : "arrived";
+  const imHereState: ImHereState = stopStatus === "approaching" ? "enroute" : "arrived";
   const screenClassName = ["screen", isStopPage && isDriveActive ? "drive-active" : ""].filter(Boolean).join(" ");
   const selectedLoopLiveCount = activeStops.length;
   const selectedLoopHeldCount = selectedLoopSealedStops.length;
@@ -706,7 +755,7 @@ export function RoutePlayer() {
     if (playerState === "preflight" && isPreparingRoute) return { label: `Preparing ${cacheProgress.percent}%`, disabled: true, className: "preparing" };
     if (playerState === "preflight" && cacheError) return { label: "Retry", disabled: false, className: "" };
     if (playerState === "preflight") return { label: "Prepare Route", disabled: false, className: "" };
-    if (playerState === "ready") return { label: "Opening Signal", disabled: false, className: "ready" };
+    if (playerState === "ready") return { label: "Play Introduction", disabled: false, className: "ready" };
     if (playerState === "intro" || playerState === "outro") {
       return {
         label: narrationPlayback === "paused" ? "Resume" : "Pause",
@@ -717,8 +766,8 @@ export function RoutePlayer() {
     if (playerState === "introPlayed") return { label: "Begin Drive", disabled: false, className: "ready" };
     if (playerState === "outroPlayed") return { label: "Replay", disabled: false, className: "replay" };
     if (playerState === "traveling") return { label: "Keep Driving", disabled: true, className: "" };
-    if (playerState === "approaching") return { label: "Something Is Close", disabled: true, className: "approaching" };
-    if (playerState === "armed") return { label: "Wake It", disabled: false, className: "ready" };
+    if (playerState === "approaching") return { label: "Keep Driving", disabled: true, className: "approaching" };
+    if (playerState === "armed") return { label: "Start Story", disabled: false, className: "ready" };
     if (playerState === "playing") {
       return {
         label: narrationPlayback === "paused" ? "Resume" : "Pause",
@@ -727,7 +776,7 @@ export function RoutePlayer() {
       };
     }
     if (playerState === "played") return { label: "Replay", disabled: false, className: "replay" };
-    return { label: "Route Closed", disabled: true, className: "" };
+    return { label: "Tour Complete", disabled: true, className: "" };
   }, [cacheError, cacheProgress.percent, isPreparingRoute, narrationPlayback, playerState, route]);
 
   useEffect(() => {
@@ -1037,6 +1086,7 @@ export function RoutePlayer() {
       acceptedAt: new Date().toISOString()
     };
     window.localStorage.setItem(legalAcceptanceStorageKey, JSON.stringify(acceptance));
+    playLegalAcceptSting();
     setLegalStatus("accepted");
   }
 
@@ -1322,7 +1372,7 @@ export function RoutePlayer() {
     }
 
     if (loopId === "complete-the-city") {
-      const confirmed = window.confirm("This is the full ~6 hour marathon across all 39 stops. Start it?");
+      const confirmed = window.confirm("This is the full 6 hour marathon across all 39 stops. Start it?");
       if (!confirmed) {
         return;
       }
@@ -1438,7 +1488,7 @@ export function RoutePlayer() {
       return;
     }
 
-    const confirmed = window.confirm(`Leave ${selectedLoop?.title ?? "this loop"} and start ${nextLoop.title}? Current loop progress will be cleared.`);
+    const confirmed = window.confirm(`Leave ${selectedLoop?.title ?? "this tour"} and start ${nextLoop.title}? Current tour progress will be cleared.`);
     if (!confirmed) {
       return;
     }
@@ -1540,6 +1590,14 @@ export function RoutePlayer() {
       setSkippedStopIds((ids) => (ids.includes(currentStop.id) ? ids : [...ids, currentStop.id]));
     }
     resetStopContext(activeStopIndex + 1);
+  }
+
+  function previousStop() {
+    if (!route || activeStopIndex <= 0) {
+      return;
+    }
+
+    resetStopContext(activeStopIndex - 1);
   }
 
   function jumpToStop(index: number) {
@@ -1654,7 +1712,7 @@ export function RoutePlayer() {
       ? stats.featured.type === "ritual" && stats.featured.payoffFired
         ? `${stats.featured.stopTitle} answered at ${localTime(stats.featured.timestamp)}.`
         : `${stats.featured.stopTitle} opened at ${localTime(stats.featured.timestamp)}.`
-      : "The route closed without a witness.";
+      : "The tour closed without a witness.";
     const text = `I survived Dark Drives. ${stats.completedStops.length} stops opened. ${stats.rituals.length} rituals performed. ${stats.answered.length} answered back. ${featuredLine} #DarkDrives`;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
 <rect width="1200" height="630" fill="#0a0908"/>
@@ -1759,7 +1817,7 @@ export function RoutePlayer() {
             <div className="welcome-screen" aria-label="Choose your night">
               <div className="welcome-intro compact">
                 <span className="stop-count">Choose your night</span>
-                <h2>Pick the loop for tonight.</h2>
+              <h2>Pick tonight&apos;s tour.</h2>
               </div>
               <div className="closest-loop-row">
                 <button
@@ -1770,7 +1828,7 @@ export function RoutePlayer() {
                   type="button"
                 >
                   <LocateFixed className="location-link-icon" aria-hidden="true" />
-                  <span>{welcomeLocationStatus === "requesting" ? "Checking your closest loop..." : "Show me the closest loop"}</span>
+                  <span>{welcomeLocationStatus === "requesting" ? "Checking your closest tour..." : "Show me the closest tour"}</span>
                 </button>
                 {welcomeLocationStatus === "enabled" && <span>Approximate distance to each first stop.</span>}
                 {welcomeLocationStatus === "denied" && <span>Location skipped. The start areas below still work.</span>}
@@ -1797,7 +1855,7 @@ export function RoutePlayer() {
                       >
                         <span className="welcome-card-dark" aria-hidden />
                         <div className="welcome-loop-card-head">
-                          <span className="welcome-loop-eyebrow">Loop <strong>{String(loop.loopNumber).padStart(2, "0")}</strong></span>
+                          <span className="welcome-loop-eyebrow">Tour <strong>{String(loop.loopNumber).padStart(2, "0")}</strong></span>
                           <span className="welcome-loop-badges">
                             {loop.isClosest && <span>Closest</span>}
                             {loop.isMarathon && <span>Marathon</span>}
@@ -1837,11 +1895,11 @@ export function RoutePlayer() {
                   ))}
                 </div>
                 <div className="welcome-loop-count">
-                  Loop <strong>{String(welcomeActiveLoopIndex + 1).padStart(2, "0")}</strong> / {String(welcomeLoops.length).padStart(2, "0")}
+                  Tour <strong>{String(welcomeActiveLoopIndex + 1).padStart(2, "0")}</strong> / {String(welcomeLoops.length).padStart(2, "0")}
                 </div>
                 <div className="welcome-loop-flash" data-show={Boolean(welcomeFlashLoopName)} aria-hidden={!welcomeFlashLoopName}>
-                  <span>Route locked</span>
-                  <strong>{welcomeFlashLoopName || "Route"}</strong>
+                  <span>Tour selected</span>
+                  <strong>{welcomeFlashLoopName || "Tour"}</strong>
                   <em>Preparing in a moment</em>
                 </div>
               </div>
@@ -1851,11 +1909,11 @@ export function RoutePlayer() {
               <span className="corner-a" aria-hidden />
               <span className="corner-b" aria-hidden />
               <div className="file-row">
-                <span className="file-tab">ROUTE LOOP</span>
+                <span className="file-tab">TOUR</span>
                 <span className="sealed">EMPTY</span>
               </div>
-              <h2>Loop unavailable</h2>
-              <p>Choose a different night from the route loop screen.</p>
+              <h2>Tour unavailable</h2>
+              <p>Choose a different night from the tour screen.</p>
             </div>
           ) : (
             <>
@@ -1864,7 +1922,7 @@ export function RoutePlayer() {
               <span className="corner-a" aria-hidden />
               <span className="corner-b" aria-hidden />
               <div className="file-row">
-                <span className="file-tab">ROUTE LOOP</span>
+                <span className="file-tab">TONIGHT&apos;S TOUR</span>
                 <span className="sealed">{selectedLoop?.estimatedDuration ?? "Choose"}</span>
               </div>
               {!isLoopPickerOpen && selectedLoop ? (
@@ -1878,7 +1936,7 @@ export function RoutePlayer() {
                     </em>
                   </div>
                   {(playerState === "preflight" || playerState === "ready") && (
-                    <button className="small-button" onClick={() => setIsLoopPickerOpen(true)}>Change loop</button>
+                    <button className="small-button exit-button" onClick={() => setIsLoopPickerOpen(true)}>Change Tour</button>
                   )}
                 </div>
               ) : (
@@ -1902,7 +1960,7 @@ export function RoutePlayer() {
               {selectedLoopHeldCount > 0 && (
                 <details className="sealed-disclosure">
                   <summary>
-                    {selectedLoopHeldCount} more stop{selectedLoopHeldCount === 1 ? "" : "s"} on this loop, locked until safe parking is confirmed
+                    {selectedLoopHeldCount} more stop{selectedLoopHeldCount === 1 ? "" : "s"} on this tour, locked until safe parking is confirmed
                   </summary>
                   <div className="sealed-list">
                     {selectedLoopSealedStops.map((sealedStop) => (
@@ -1925,7 +1983,7 @@ export function RoutePlayer() {
           {isStopPage && (
             <div className="hero">
               <span className="stop-count">
-                {selectedLoop?.title ?? "Route"} / Stop {activeStopIndex + 1} of {activeStops.length}
+                {selectedLoop?.title ?? "Tour"} / Stop {activeStopIndex + 1} of {activeStops.length}
               </span>
               <h2 className="stop-name">{currentStop.title}</h2>
               <div className="presence" data-state={stopStatus}>
@@ -1949,7 +2007,7 @@ export function RoutePlayer() {
               <div className="prepare-route-note">
                 {playerState === "ready" ? (
                   <>
-                    <p>Opening signal is ready.</p>
+                    <p>Introduction is ready.</p>
                     <p>Listen while parked, then Begin Drive when you are ready to move.</p>
                   </>
                 ) : isPreparingRoute ? (
@@ -1961,7 +2019,7 @@ export function RoutePlayer() {
                   </>
                 ) : (
                   <>
-                    <p>Route audio downloads before the drive starts and plays offline from this device.</p>
+                    <p>Downloads the audio guide to your phone so the tour works offline, even with no signal.</p>
                     <p>Location is requested on Begin Drive so the app can arm stops while foregrounded. If it is off, every stop still works by hand.</p>
                     {cacheError && <p className="cache-error">{cacheError}</p>}
                   </>
@@ -1970,7 +2028,7 @@ export function RoutePlayer() {
             )}
             {isDriveActive && narrationPlayback !== "idle" && (
               <PlaybackSignal
-                label="Narration signal"
+                label="Narration playback"
                 paused={narrationPlayback === "paused"}
                 progress={narrationProgress}
                 onSeek={seekNarration}
@@ -1990,7 +2048,7 @@ export function RoutePlayer() {
                 <span>Directions</span>
               </button>
               <button
-                aria-label={isPrepared ? "Stops" : "Stops locked, prepare first"}
+                aria-label={isPrepared ? "Stop list" : "Stop list locked, prepare first"}
                 className="secondary stops-gate"
                 data-locked={!isPrepared}
                 disabled={!isPrepared}
@@ -2000,12 +2058,17 @@ export function RoutePlayer() {
                   }
                 }}
               >
-                Stops
+                Stop List
               </button>
+              {activeStopIndex > 0 && playerState !== "outro" && playerState !== "outroPlayed" && (
+                <button className="secondary" onClick={previousStop}>
+                  Previous File
+                </button>
+              )}
               {playerState === "played" ? (
                 <>
                   <button className="secondary" onClick={() => void advanceAfterPlayed()}>
-                    {activeStopIndex === activeStops.length - 1 ? "Close Route" : "Next File"}
+                    {activeStopIndex === activeStops.length - 1 ? "Close Tour" : "Next File"}
                   </button>
                   {activeStopIndex < activeStops.length - 1 && (
                     <button className="secondary" onClick={skipCurrentStop} disabled={!canSkip}>
@@ -2015,7 +2078,7 @@ export function RoutePlayer() {
                 </>
               ) : playerState === "outroPlayed" ? (
                 <button className="secondary" onClick={() => void closeRouteAfterOutro()}>
-                  Close Route
+                  Close Tour
                 </button>
               ) : playerState === "outro" ? null : (
                 <>
@@ -2064,11 +2127,11 @@ export function RoutePlayer() {
               </div>
               {!isPreDrive && route.loops && route.loops.length > 1 && (
                 <details className="loop-switcher">
-                  <summary>Change loop</summary>
+                  <summary>Change Tour</summary>
                   <div className="loop-switch-list">
                     {route.loops.filter((loop) => loop.id !== selectedLoop?.id).map((loop) => (
                       <button className="stop-row loop-switch-row" key={loop.id} onClick={() => switchLoopMidDrive(loop.id)}>
-                        <span>{completedLoopIdSet.has(loop.id) ? "DONE" : "LOOP"}</span>
+                        <span>{completedLoopIdSet.has(loop.id) ? "DONE" : "TOUR"}</span>
                         <strong>{loop.title}</strong>
                         <em>start over</em>
                       </button>
@@ -2115,7 +2178,7 @@ export function RoutePlayer() {
                     </button>
                     {isAudioRitual && <p>{ritual.instructionText}</p>}
                     {isAudioRitual && isActive && (
-                      <PlaybackSignal label={`${ritual.label} signal`} progress={ritualProgress} variant="ritual" bars={18} />
+                      <PlaybackSignal label={`${ritual.label} playback`} progress={ritualProgress} variant="ritual" bars={18} />
                     )}
                   </div>
                 );
@@ -2125,7 +2188,7 @@ export function RoutePlayer() {
 
           {isStopPage && (
             <details className="map-drawer">
-              <summary>Route signal</summary>
+              <summary>Route Map</summary>
               <RouteMap stops={activeStops} activeStopIndex={activeStopIndex} currentPosition={currentPosition} />
             </details>
           )}
@@ -2208,11 +2271,15 @@ export function RoutePlayer() {
                     : `${stats.featured.stopTitle} opened at ${localTime(stats.featured.timestamp)}.`}
                 </p>
               )}
+              <div className="completion-actions">
+                <a className="small-button" href={reviewUrl()}>Submit Review</a>
+                <button className="small-button" onClick={() => void returnHome()}>Exit</button>
+              </div>
               <button className="small-button" onClick={() => void shareRecap()}>Share recap</button>
               {nextUnfinishedLoop && (
                 <div className="next-loop-panel">
                   <p>
-                    {loopsLeftTonight} loop{loopsLeftTonight === 1 ? "" : "s"} left tonight.
+                    {loopsLeftTonight} tour{loopsLeftTonight === 1 ? "" : "s"} left tonight.
                   </p>
                   <button className="small-button" onClick={startAnotherLoop}>
                     Start {nextUnfinishedLoop.title}

@@ -24,7 +24,7 @@ But after dark, this city keeps other appointments.
 What you are about to hear is drawn from record, from rumor, and from the accounts of people who were there... and who never fully explained what they saw.
 
 Eight stops.
-One loop.
+One tour.
 
 When a place is ready for you, the screen will change.
 
@@ -151,4 +151,3 @@ for (const candidate of candidates) {
     console.log(`Wrote ${filename} (${audio.length} bytes)`);
   }
 }
-
